@@ -1,0 +1,37 @@
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//                Run for It               
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+// AppleWin Debugger script
+// Michaelangel007
+
+// ////////////////////////////////////////
+// Cheats
+// ////////////////////////////////////////
+
+// Infinite Time
+//     08E9:C6 B0  // Original: DEC $B0
+       08E9:A5 B0  // Cheat:    LDA $B0 ; Infinite Time
+
+       00AE:50     // Reset time back to full 5 bars
+       00B0:50     // 
+
+// Invulnerability
+// v3
+//     1261:90 // Original: BCC $128C
+       1261:80 // Cheat   : BRA $128C ; Never collide with enemies
+// v2 Unfortunately this makes it impossible to shoot enemies
+//     13E3:38  // original
+//     13E3:18  // Never touch enemies (isTouchMob always returns false)
+// v1
+//     1272:38    // Original
+//     1274:E9 0A // Original
+//     1277:C5 AE // Original
+//     1279:90 0B // Original
+//     1272:18    // Cheat: Don't lose time when touch enemy
+//     1274:A9 50 // Cheat: Don't lose time when touch enemy
+//     1277:EA EA // Cheat: Don't lose time when touch enemy
+//
+// One Life Difficulty:
+//     1279:90 0B // Original
+//     1279:EA EA // Cheat: Touching enemy game over
+// ////////////////////////////////////////

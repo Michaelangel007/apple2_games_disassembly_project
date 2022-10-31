@@ -1,0 +1,1837 @@
+/// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//                Run for It               
+// =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+// Reverse Engineered by Michaelangel007
+// AppleWin Debugger script
+
+// TL:DR;
+//
+//   Cheats
+//     08E9:A5 B0  // Cheat: Infinite Time
+//     13E3:18     // Cheat: Invulnerability
+//
+//   Info
+//     PlayerX      = 801C
+//     PlayerY      = 801D
+//     PlayerRoom   = A0
+//     PlayerZone   = A1
+//     NumMapDone   = A2
+//     PlayerScore1 = A7
+//     PlayerScore2 = A8
+//     PlayerScore3 = A9
+//
+// Hint: To start reverse engineering halt on keypress
+//     BPM C010
+
+symbasic off
+symuser  clear
+symuser2 clear
+X 0:BFFF
+
+symmain ! BAS2L
+
+// ========================================
+// Data (Zero-Page)
+// ========================================
+
+// See @B9A0 rwtsSeek
+db HalfTrack     26
+db PrevTrack     27
+db WantTrack     2A
+db Slotx16_2B    2B
+db rwtsTrack     2E
+db rwtsVol       2F
+db HaveTrack    478
+db RetryCount   578 // RWTS
+db Slotx16_5F8  5F8 // RWTS
+da IOBPL        48
+
+db zMusLoopIdx 4D
+da zMusLoopPtr 4E
+
+da zDiskHGR     50 // @1905 used as pointer for disk RWTS parameters or as HGR pointer
+da zSFX         52 // See: @19A0 PlaySFX
+db TimerCol     54 // Which bar to draw, #4 -> #0
+dw zSong1Ptr    58 // @1975
+da zWork56      56 // @10A0
+db zTmpY        5A
+db zGlyphH      5B // heights in bytes
+db zGlyphW      5C // width in bytes
+db zHgrPage     5E
+db zNotePitch   5F // @1975 pulls off two bytes for $1A02
+db zNoteLen     60 // See: @19A0 PlaySFX
+db zSpriteX     61 //@0FFD _PutChar4
+db zSpriteY     62 // @0B22 DrawRoom  @1FF0 INC zSpriteY
+db zSFXduration 6D // See: @19A0 PlaySFX
+db zSFXdelPitch 6E // Delta Pitch
+db zSFXendPitch 6F // End   Pitch
+
+da zGlpyhPtr    73 // GlyphPtr // was zLevelGlyph
+da zWork75      75 // Used in DrawPlayer @1A99
+
+// 1DFF CalcTileAddr
+da zTile        77 // Dst Tile Ptr to HGR
+da zTileBGPtr   79 // Src HGR Page 3
+
+db zIOB_Type    7B // Useless, redundant; always 1
+db zIOB_Slot    7C // 60 = Slot 6
+db zIOB_Drive   7D // 1 = Drive 1
+db zIOB_Vol     7E // 0 = Any
+db zIOB_Track   7F // 
+db zIOB_Sector  80 //
+da zIOB_DevPtr  81 // Pointer to Device Characteristics, $008C
+da zIOB_Dst     83
+db zIOB_Len     85 // 00 = 256 bytes
+db zIOB_Command 86 // 1=Read
+db zIOB_Error   87
+da zIOB_RetVol  88
+db zIOB_PrevSlot 8A
+db zIOB_PrevDrv  8B
+
+db DriveParmType 8C // Type, 0=Device II, ignored
+db Drive_Phases  8D // 1 = two phases
+dw Drive_OnTime  8E // $D8EF = Motor on time delay
+
+db zDiskNumSec  92 // See: DiskRead @18A9
+
+db zRoomW  94 // @0B28
+db zRoomW2 95 // @0B46 room width * 2
+db zRoomH  96 // @0B2C
+db zTileH  97
+
+db zIsJoystick  98
+db zInputRight  99
+db zInputLeft   9A
+db zInputDown   9B
+db zInputUp     9C
+db zInputShoot  9D // @0F06
+db zInputMute   9E
+
+// ~~~~~~~~~~~~~~~~
+// Room
+// ~~~~~~~~~~~~~~~~
+//
+// @B34 (DrawRoom = B22)
+//
+// Room Number             Room Zone
+// 76543210  Bit Position  76543210
+//   rrrrcc  row/col            zzz Zone ranges 0..5
+//    3c  3  Mask
+//
+//     UP            += $04
+// LEFT RIGHT  -= $01      += $01
+//    DOWN          -= $04
+//
+// NOTE: When zone changes room number is clamped [0..3] @0B00
+//
+// Room Data Size = $1E0 (480/200 = 24)
+// Room Tiles = 20 x 24
+//      0B22 DrawRoom
+//      0B28   LDA #$18  ; 24 Height
+//      0BB2C  LDA #$14  ; 20 Width
+
+//      150A   LDA #$10  ; 16 width
+//      150E   LDA #$04  ;  4 Height
+//      1512 Calls 0B3E DrawRoom2
+//Room Zone
+// $A0 $A1   Data: 9D90..B40F
+//  00  00    A1  $0803:9D90
+//  01  00    A2  $0805:9F70
+//  02  00    A3  $0807:A150
+//  03  00    A4  $0809:A330
+//  04  00    B1  $080B:A510
+//  05  00    B2  $080D:A6F0
+//  06  00    B3  $080F:A8D0
+//  07  00    B4  $0811:AAB0
+//  08  00    C1  $0813:AC90
+//  09  00    C2  $0815:AE70
+//  0A  00    C3  $0817:B050
+//  0B  00    C4  $0819:B230
+//  0C --->   @AF6, Next Zone: 01
+//  00  01    D1  $0803:9D90
+//  01  01    D2  $0805:9F70
+//  02  01    D3  $0807:A150
+//  03  01    D4  $0809:A330
+//  04  01    E1  $080B:A510
+//  05  01    E2  $080D:A6F0
+//  06  01    E3  $080F:A8D0
+//  07  01    E4  $0811:AAB0
+//  08  01    F1  $0813:AC90 // Top 4x8 @ $9112 
+//  09  01    F2  $0815:AE70
+//  0A  01    F3  $0817:B050
+//  0B  01    F4  $0819:B230
+//  0C --->   @AF6, Next Zone: 02
+
+//  00  02
+//  01  02
+//  02  02
+//  03  02
+//  04  02
+//  05  02
+//  06  02
+//  07  02 -> H4
+//  08  02
+//  09  02
+//  0A  02
+//  0B  02 -> I4
+
+//  00  04 -> M1
+//  01  04 -> M2
+//  04  04 -> N1
+//  05  04 -> N2
+//  06  04 -> N3
+//  07  04 -> N4
+//  0B  04 -> O4
+//  00  04 -> P1
+//  06  05 -> Q3 $80F:A8D0
+//  07  05 -> Q4
+//  08  05 -> R1
+//  09  05 -> R2
+//  0A  05 -> R3 $817:B050
+//  0B  05 -> R4 $819:8B90
+//
+// 0B 05 -> = R4 @F2D  END
+// Row = 'A' + [$A0/4] + [$A1*3]
+db zPlayerRoom  A0  // column = bottom 2 bits = 0, 1, 2, 3; row = top 4 bits
+db zPlayerZone  A1
+db zNumMapDone  A2  // Number of time wrapped???  @153C += 6
+
+db zRollover    A3 // #$2D
+da zMapPtr      A4
+
+// Bytes: A9 A8 A7
+// Digit: 0e dc ba  // Only 5 digits displayed
+db zScore1 A7
+db zScore2 A8
+db zScore3 A9
+
+
+db zTimer1      AE // SED: 40 = 4 out of 5 bars; 137C: ADC zTimer ; Touch time extend 
+                   // 102A: Exit room, check if Timer > 5
+                   // A202: LDA #$50  ; 5 bars
+                   // A204: STA $AE   ; init
+db zTimer2      B0 // A206: STA $B0   ; init
+
+// > 0 if colliding with enemy
+// Init #08 if touching
+db zHitTimer    B1 // // _09E0: if ![$B1] JSR 0A0B
+
+// Note: This overlaps other drawing temporary variables!
+da TileBuf      C4:CD // C4..EB // One row of tiles to draw
+db              CE
+db zDrawX       CF // was zCharGlyph
+db zDrawY       D0
+db pString      D1 // @146A PrintString
+da TileBuf2     D2:EB
+
+
+db zScoreCol    D7 // Which digit of the score we are printing [0..2] // @F62
+
+
+// ========================================
+// Data (Part 1)
+// ========================================
+
+//da RoomTable 803:81A // @B34: LDA zPlayRoom1*2, [$A4,$A5]; See: DrawRoom
+//                        //Zone 0  1  2  3  4  5
+da RoomPtrA1 803  // [0] 9D90 // A1,D1,G1,J1,M1,P1
+da RoomPtrA2 805  // [1] 9F70 // A2,D2,G2,J2,M2,P2
+da RoomPtrA3 807  // [2] A150 // A3,D3,G3,J3,M3,P3
+da RoomPtrA4 809  // [3] A330 // A4,D4,G4,J4,M4,P4
+da RoomPtrB1 80B  // [4] A510 // B1,E1,H1,K1,N1,Q1
+da RoomPtrB2 80D  // [5] A6F0 // B2,E2,H2,K2,N2,Q2
+da RoomPtrB3 80F  // [6] A8D0 // B3,E3,H3,K3,N3,Q3
+da RoomPtrB4 811  // [7] AAB0 // B4,E4,H4,K4,N4,Q4
+da RoomPtrC1 813  // [8] AC90 // C1,F1,I1,L1,O1,R1
+da RoomPtrC2 815  // [9] AE70 // C2,F2,I2,L2,O2,R2
+da RoomPtrC3 817  // [A] B050 // C3,F3,I3,L3,O3,R3
+da RoomPtrC4 819  // [B] B230 // C4,F4,I4,L4,O4,R4
+
+// @A7D LDA 81B,X
+// @A82 LDA 81C,X
+da Unknown1Ptr 81B  // 8B90 ???
+da Unknown2Ptr 81D  // 8BF2 ???
+da Unknown3Ptr 81F  // 8C1F ???
+da Unknown4Ptr 821  // 8C4C ???
+
+// Map T/S Table @0855, 8 bytes/entry
+//   00 Track  95F0
+//   01 Sector 95F0
+//   02 Track  9D90 // Room1
+//   03 Sector 9D90
+//   04 Track  8CA6
+//   05 Sector 8CA6
+//   06 Track  91EE
+//   06 Sector 91EE
+// ReadZone @15CA -> 15D1
+db Z0_95F0_Trk 855+0
+db Z0_95F0_Sec 855+1
+db Z0_Room_Trk 855+2 // A,B,C
+db Z0_Room_Sec 855+3
+db Z0_8CA6_Trk 855+4
+db Z0_8CA6_Sec 855+5
+db Z0_91EE_Trk 855+6
+db Z0_91EE_Sec 855+7
+
+db Z1_95F0_Trk 85D+0
+db Z1_95F0_Sec 85D+1
+db Z1_Room_Trk 85D+2 // D,E,F
+db Z1_Room_Sec 85D+3
+db Z1_8CA6_Trk 85D+4
+db Z1_8CA6_Sec 85D+5
+db Z1_91EE_Trk 85D+6
+db Z1_91EE_Sec 85D+7
+
+db Z2_95F0_Trk 865+0
+db Z2_95F0_Sec 865+1
+db Z2_Room_Trk 865+2 // G,H,I
+db Z2_Room_Sec 865+3
+db Z2_8CA6_Trk 865+4
+db Z2_8CA6_Sec 865+5
+db Z2_91EE_Trk 865+6
+db Z2_91EE_Sec 865+7
+
+db Z3_95F0_Trk 86D+0
+db Z3_95F0_Sec 86D+1
+db Z3_Room_Trk 86D+2 // J,K,L
+db Z3_Room_Sec 86D+3
+db Z3_8CA6_Trk 86D+4
+db Z3_8CA6_Sec 86D+5
+db Z3_91EE_Trk 86D+6
+db Z3_91EE_Sec 86D+7
+
+db Z4_95F0_Trk 875+0
+db Z4_95F0_Sec 875+1
+db Z4_Room_Trk 875+2 // M,N,O
+db Z4_Room_Sec 875+3
+db Z4_8CA6_Trk 875+4
+db Z4_8CA6_Sec 875+5
+db Z4_91EE_Trk 875+6
+db Z4_91EE_Sec 875+7
+
+db Z5_95F0_Trk 87D+0
+db Z5_95F0_Sec 87D+1
+db Z5_Room_Trk 87D+2 // P,Q,R
+db Z5_Room_Sec 87D+3
+db Z5_8CA6_Trk 87D+4
+db Z5_8CA6_Sec 87D+5
+db Z5_91EE_Trk 87D+6
+db Z5_91EE_Sec 87D+7
+
+db 888.Trk 888
+db 888.Sec 888+1
+da 888.Dst 888+2
+db 888.Len 888+4
+
+da 8F8            // 537
+da 8FA            // 52D
+db 8FC            // Zero terminated
+
+// SFX [1] $09C3:20 A0 19  32 46 05 03   // S 800:1FFF 20 A0 19  // XREF
+db shootBegPitch 9c6
+db shootEndPitch 9c6+1
+db shootDelPitch 9c6+2
+db shootDuration 9c6+3
+
+// SFX [2] $0A1E:20 A0 19  C8 FA 02 02   // S 800:1FFF 20 A0 19  // XREF
+db crashBegPitch a21    // Collided with enemy
+db crashEndPitch a21+1
+db crashDelPitch a21+2
+db crashDuration a21+3
+
+// Setup for PlayCrashSFX
+// copy 7 bytes: [$1DF7:1DFE] -> [$0A26:A2D]
+db a26:a2d
+
+// SFX [3] $0B09:20 A0 19  C8 64 F6 0A   // S 800:1FFF 20 A0 19  // XREF
+db zoneBegPitch b0c   // Exit room and switch to next zone
+db zoneEndPitch b0c+1
+db zoneDelPitch b0c+2
+db zoneDuration b0c+3
+
+db DF7
+db DF8
+db JoyDelay    0F11
+
+db  EndY F30
+db  EndX F30+1
+asc End  F32:F35
+
+db TimerXTable 109B:109B+4 // @1019: LDA $109B,X [x=0..4]
+
+// SFX [4] $12EA:20 A0 19  AA 96 FC 02
+db mobdeadBegPitch 12ED    // Enemy hit by player bullet
+db mobdeadEndPitch 12ED+1
+db mobdeadDelPitch 12ED+2
+db mobdeadDuration 12ED+3
+
+// [5] $15B1:20 A0 19  64 96 03 05  
+db OutTimeBegPitch 15B4    // Out of time
+db OutTimeEndPitch 15B4+1
+db OutTimeDelPitch 15B4+2
+db OutTimeDuration 15B4+3
+
+
+dw WinSongData 1496:14AF
+db WinSongDone 14B0
+
+// Music
+da 14D2
+db 14D2+2
+
+// Music
+da 14DD
+db 14DD+2
+
+// Disk IO params // @18A9 has 5 bytes
+db 1518.Trk 1518
+db 1518.Sec 1518+1
+da 1518.Dst 1518+2
+db 1518.Len 1518+4
+
+
+da 1520        // Ptr to font @ AC0E ?
+ASC 1522:152D  // " KEEP GOING"
+
+db 15C2.Trk 15C2   // 1E
+db 15C2.Sec 15C2+1 // 0F
+da 15C2.Dst 15C2+2 // $A190
+db 15C2.Len 15C2+4 // 6 sectors
+
+// --------
+// ReadZone
+// --------
+// [$855 + PlayerZone/8] @15D1
+// [$856 + PlayerZone/8] @15D9
+db 15E2.Trk 15E2    //
+db 15E2.Sec 15E2+1  //
+da 15E2.Dst 15E2+2  // $95F0
+db 15E3.Len 15E2+4  // 8 sectors
+
+// [$857 + PlayerZone/8] @15EA
+// [$858 + PlayerZone/8] @15F0
+db 15F9.Trk 15F9
+db 15F9.Sec 15F9+1
+da 15F9.Dst 15F9+2 // $9D90
+db 15F9.Len 15F9+4 // $1A sectors
+
+// [$857 + PlayerZone/8] @1601
+// [$858 + PlayerZone/8] @1607
+db 1610.Trk 1610
+db 1610.Sec 1610+1
+da 1610.Dst 1610+2 // $8CA6
+db 1610.Len 1610+4 // 5 sectors
+
+// [$857 + PlayerZone/8] @15EA
+// [$858 + PlayerZone/8] @15F0
+db 1626.Trk 1626
+db 1626.Sec 1626+1
+da 1626.Dst 1626+2 // $9E11
+db 1626.Len 1626+4 // 1 sectors
+
+
+db NoDiskErr 18A8  // 01 for IOB_Error, See _DiskRead @1905
+
+// Len: 8B
+// 1E35:00 00 00 00
+// 1E39:01 01 01
+// 1E3C:02 02 02 02
+// 1E40:03 03 03
+// 
+db 1E35:1EC0 // ???
+// 10C1:00 01 02 03
+// 10C5:00 01 02
+// 10C8:00 01 02 03
+db 1EC1:1F4C // ???
+
+
+db HGR1 2000:3fff // Page 1
+db HGR2 4000:5fff // Page 2
+db KorJ 6000:7FFF // Choose K or J
+
+///db RoomCur 8000:8020 // ???
+db gPlayerX 801C 
+db gPlayerY 801D
+
+// Power Up Table
+// [0]  [1]  [2]  [3]  [4]  [5]  [6]  [7]
+// 90A6 90A7 90A8 90A9 90AA 90AB 90AC 90AD
+// 90AE 90AF ...
+// low  high room ???  ???  ???  ???  ???
+  da 90A6
+  db 90A6+2
+
+  da 90AE+0
+  db 90AE+2
+
+  da 90B6+0
+  db 90B6+2
+
+  da 90BE+0
+  db 90BE+2
+
+
+// S 800:1FFF EE 91
+//     [1] $1426  // @1425: LDA $91EE,X // @13FE DrawLifts -> @140F: JSR $141B
+//     [2] $1628  // @1617 ChangeZone, read 1 sector
+// 91EE:92ED Unknown 
+
+
+// =~=~=~=~=~=~=~=~=~=~
+// Font
+// =~=~=~=~=~=~=~=~=~=~
+// Game Play: Font 92EE:95EF (    ) $B0..
+// High Score Font 918E:978D ($528) $A0..DB but font ends at $96B5
+// =~=~=~=~=~=~=~=~=~=~
+// Fixed size: 2 bytes header/glyph + 2x10 bytes ($16 = #22 = bytes per glyph)
+// BSAVE "font.92EE",92EE:95EF  // 0x302 bytes / $16 bytes/glyph = $23 glyphs = 46 bytes wastes
+// =~=~=~=~=~=~=~=~=~=~
+//
+// var glyph=0,addr,a,g,txt='';
+// for(addr = 0x92EE; addr < 0x95F0; addr += 0x16 ) {
+//  a = Hex4(addr); g = Hex2(glyph); glyph++;
+//  txt += 'db Glyph' + g + '.W ' + a                  + '\n';
+//  txt += 'db Glyph' + g + '.H ' + a + '+1'           + '\n';
+//  txt += 'db Glyph' + g + '.D ' + a + '+2:' + a + '+15\n\n'; } console.log( txt );
+//
+// PrintChar $A0..DB
+//   [00] width
+//   [01] height
+//   [02] sprite data
+//   [15] end sprite data
+//
+// ASCII  0    1    2    3    4    5    6    7    8    9
+// HEX  : B0   B1   B2   B3   B4   B5   B6   B7   B8   B9   BA   BB   BC   BD   BE   BF
+// Glyph: 00   01   02   03   04   05   06   07   08   09   0A   0B   0C   0D   0E   0F
+// Addr : 92EE 9304 931A 9330 9346 935C 9372 9388 939E 93B4 93CA 93E0 93F6 940C 9422 9438
+//
+// ASCII: @    A    B    C    D    E    F    G    H    I    J    K    L    M    N    O
+// HEX  : C0   C1   C2   C3   C4   C5   C6   C7   C8   C9   CA   CB   CC   CD   CE   CF
+// Glyph: 10   11   12   13   14   15   16   17   18   19   1A   1B   1C   1D   1E   1F
+// Addr : 944E 9464 947A 9490 94A6 94BC 94D2 94E8 94FE 9514 952A 9540 9556 956C 9582 9598
+
+// ASCII: P    Q    R
+// HEX  : D0   D1   D2
+// Glyph: 20   21   22
+// Addr : 95AE 95C4 95DA
+
+//   $A0
+// ! $A1
+// # $A3
+
+// SPC $B0
+db Glyph00.W 92EE
+db Glyph00.H 92EE+1
+dw Glyph00.D 92EE+2:92EE+15
+
+// ! $B1
+db Glyph01.W 9304
+db Glyph01.H 9304+1
+dw Glyph01.D 9304+2:9304+15
+
+// 2 $B2
+db Glyph02.W 931A
+db Glyph02.H 931A+1
+dw Glyph02.D 931A+2:931A+15
+
+// 3 $B3
+db Glyph03.W 9330
+db Glyph03.H 9330+1
+dw Glyph03.D 9330+2:9330+15
+
+// 4 $B4
+db Glyph04.W 9346
+db Glyph04.H 9346+1
+dw Glyph04.D 9346+2:9346+15
+
+// 5 $B5
+db Glyph05.W 935C
+db Glyph05.H 935C+1
+dw Glyph05.D 935C+2:935C+15
+
+// 6 $B6
+db Glyph06.W 9372
+db Glyph06.H 9372+1
+dw Glyph06.D 9372+2:9372+15
+
+// 7 $B7
+db Glyph07.W 9388
+db Glyph07.H 9388+1
+dw Glyph07.D 9388+2:9388+15
+
+// 8 $B8
+db Glyph08.W 939E
+db Glyph08.H 939E+1
+dw Glyph08.D 939E+2:939E+15
+
+// 9 $B9
+db Glyph09.W 93B4
+db Glyph09.H 93B4+1
+dw Glyph09.D 93B4+2:93B4+15
+
+// : $BA
+db Glyph0A.W 93CA
+db Glyph0A.H 93CA+1
+dw Glyph0A.D 93CA+2:93CA+15
+
+// $BB
+db Glyph0B.W 93E0
+db Glyph0B.H 93E0+1
+dw Glyph0B.D 93E0+2:93E0+15
+
+// $BC
+db Glyph0C.W 93F6
+db Glyph0C.H 93F6+1
+dw Glyph0C.D 93F6+2:93F6+15
+
+// ' ' $BD
+db Glyph0D.W 940C
+db Glyph0D.H 940C+1
+dw Glyph0D.D 940C+2:940C+15
+
+// '>' $BE
+db Glyph0E.W 9422
+db Glyph0E.H 9422+1
+dw Glyph0E.D 9422+2:9422+15
+
+// '?' $BF
+db Glyph0F.W 9438
+db Glyph0F.H 9438+1
+dw Glyph0F.D 9438+2:9438+15
+
+// '@' $C0 (unused)
+db Glyph10.W 944E
+db Glyph10.H 944E+1
+dw Glyph10.D 944E+2:944E+15
+
+// 'A' $C1
+db Glyph11.W 9464
+db Glyph11.H 9464+1
+dw Glyph11.D 9464+2:9464+15
+
+// 'B' $C2
+db Glyph12.W 947A
+db Glyph12.H 947A+1
+dw Glyph12.D 947A+2:947A+15
+
+// 'C' $C3
+db Glyph13.W 9490
+db Glyph13.H 9490+1
+dw Glyph13.D 9490+2:9490+15
+
+// 'D' $C4
+db Glyph14.W 94A6
+db Glyph14.H 94A6+1
+dw Glyph14.D 94A6+2:94A6+15
+
+// 'E' $C5
+db Glyph15.W 94BC
+db Glyph15.H 94BC+1
+dw Glyph15.D 94BC+2:94BC+15
+
+// 'F' $C6
+db Glyph16.W 94D2
+db Glyph16.H 94D2+1
+dw Glyph16.D 94D2+2:94D2+15
+
+// 'G' $C7
+db Glyph17.W 94E8
+db Glyph17.H 94E8+1
+dw Glyph17.D 94E8+2:94E8+15
+
+// 'H' $C8
+db Glyph18.W 94FE
+db Glyph18.H 94FE+1
+dw Glyph18.D 94FE+2:94FE+15
+
+// 'I' $C9
+db Glyph19.W 9514
+db Glyph19.H 9514+1
+dw Glyph19.D 9514+2:9514+15
+
+// 'J' $CA
+db Glyph1A.W 952A
+db Glyph1A.H 952A+1
+dw Glyph1A.D 952A+2:952A+15
+
+// 'K' $CB
+db Glyph1B.W 9540
+db Glyph1B.H 9540+1
+dw Glyph1B.D 9540+2:9540+15
+
+// 'L' $CC
+db Glyph1C.W 9556
+db Glyph1C.H 9556+1
+dw Glyph1C.D 9556+2:9556+15
+
+// 'M' $CD
+db Glyph1D.W 956C
+db Glyph1D.H 956C+1
+dw Glyph1D.D 956C+2:956C+15
+
+// 'N' $CE
+db Glyph1E.W 9582
+db Glyph1E.H 9582+1
+dw Glyph1E.D 9582+2:9582+15
+
+// 'O' $CF
+db Glyph1F.W 9598
+db Glyph1F.H 9598+1
+dw Glyph1F.D 9598+2:9598+15
+
+// 'P' $D0
+db Glyph20.W 95AE
+db Glyph20.H 95AE+1
+dw Glyph20.D 95AE+2:95AE+15
+
+// 'Q' $D1
+db Glyph21.W 95C4
+db Glyph21.H 95C4+1
+dw Glyph21.D 95C4+2:95C4+15
+
+// 'R' $D2
+db Glyph22.W 95DA
+db Glyph22.H 95DA+1
+dw Glyph22.D 95DA+2:95DA+15
+
+// When the game is over you are shown a high score screen
+// Glyphs start at $918E .. $96B5 (1380 bytes) BUT only at the high score
+//     BSAVE "font.918E.96B5",918E:96B5
+// Valid input keys:
+//   $88 Ctrl-H
+//   $8D RETURN
+//   $A0 .. DF PutChar
+// High Score name entered: ($D4) -> $A435
+
+// To display copy bytes to:
+// 2000,2400,2800,2C00,3000,3400,3800,3C00,2080,2480
+
+
+// =~=~=~=~=~=~=~=~=~=~
+// Tiles 95F0:9D8F
+// Fixed size: 14x8
+// BSAVE "tiles.95f0",95F0:9D8F
+// =~=~=~=~=~=~=~=~=~=~
+//
+//
+// function Hex       ( n ) { return "0123456789ABCDEF".substr(n & 0xF,1) };
+// function Hex2      ( n ) { return Hex (n >> 4) + Hex (n); }
+// function Hex4      ( n ) { return Hex2(n >> 8) + Hex2(n); }
+// var tile=0,addr=0x95F0,txt='',a;
+// for(tile = 0; tile < 0x7A; tile++, addr += 16 ) { txt += 'dw Tile' + Hex2(tile) + ' ' + Hex4(addr) + ':' + Hex4(addr+15) + '\n'; } console.log( txt );
+
+dw Tile00 95F0:95FF
+dw Tile01 9600:960F
+dw Tile02 9610:961F
+dw Tile03 9620:962F
+dw Tile04 9630:963F
+dw Tile05 9640:964F
+dw Tile06 9650:965F
+dw Tile07 9660:966F
+dw Tile08 9670:967F
+dw Tile09 9680:968F
+dw Tile0A 9690:969F
+dw Tile0B 96A0:96AF
+dw Tile0C 96B0:96BF
+dw Tile0D 96C0:96CF
+dw Tile0E 96D0:96DF
+dw Tile0F 96E0:96EF
+dw Tile10 96F0:96FF
+dw Tile11 9700:970F
+dw Tile12 9710:971F
+dw Tile13 9720:972F
+dw Tile14 9730:973F
+dw Tile15 9740:974F
+dw Tile16 9750:975F
+dw Tile17 9760:976F
+dw Tile18 9770:977F
+dw Tile19 9780:978F
+dw Tile1A 9790:979F
+dw Tile1B 97A0:97AF
+dw Tile1C 97B0:97BF
+dw Tile1D 97C0:97CF
+dw Tile1E 97D0:97DF
+dw Tile1F 97E0:97EF
+dw Tile20 97F0:97FF
+dw Tile21 9800:980F
+dw Tile22 9810:981F
+dw Tile23 9820:982F
+dw Tile24 9830:983F
+dw Tile25 9840:984F
+dw Tile26 9850:985F
+dw Tile27 9860:986F
+dw Tile28 9870:987F
+dw Tile29 9880:988F
+dw Tile2A 9890:989F
+dw Tile2B 98A0:98AF
+dw Tile2C 98B0:98BF
+dw Tile2D 98C0:98CF
+dw Tile2E 98D0:98DF
+dw Tile2F 98E0:98EF
+dw Tile30 98F0:98FF
+dw Tile31 9900:990F
+dw Tile32 9910:991F
+dw Tile33 9920:992F
+dw Tile34 9930:993F
+dw Tile35 9940:994F
+dw Tile36 9950:995F
+dw Tile37 9960:996F
+dw Tile38 9970:997F
+dw Tile39 9980:998F
+dw Tile3A 9990:999F
+dw Tile3B 99A0:99AF
+dw Tile3C 99B0:99BF
+dw Tile3D 99C0:99CF
+dw Tile3E 99D0:99DF
+dw Tile3F 99E0:99EF
+dw Tile40 99F0:99FF
+dw Tile41 9A00:9A0F
+dw Tile42 9A10:9A1F
+dw Tile43 9A20:9A2F
+dw Tile44 9A30:9A3F
+dw Tile45 9A40:9A4F
+dw Tile46 9A50:9A5F
+dw Tile47 9A60:9A6F
+dw Tile48 9A70:9A7F
+dw Tile49 9A80:9A8F
+dw Tile4A 9A90:9A9F
+dw Tile4B 9AA0:9AAF
+dw Tile4C 9AB0:9ABF
+dw Tile4D 9AC0:9ACF
+dw Tile4E 9AD0:9ADF
+dw Tile4F 9AE0:9AEF
+dw Tile50 9AF0:9AFF
+dw Tile51 9B00:9B0F
+dw Tile52 9B10:9B1F
+dw Tile53 9B20:9B2F
+dw Tile54 9B30:9B3F
+dw Tile55 9B40:9B4F
+dw Tile56 9B50:9B5F
+dw Tile57 9B60:9B6F
+dw Tile58 9B70:9B7F
+dw Tile59 9B80:9B8F
+dw Tile5A 9B90:9B9F
+dw Tile5B 9BA0:9BAF
+dw Tile5C 9BB0:9BBF
+dw Tile5D 9BC0:9BCF
+dw Tile5E 9BD0:9BDF
+dw Tile5F 9BE0:9BEF
+dw Tile60 9BF0:9BFF
+dw Tile61 9C00:9C0F
+dw Tile62 9C10:9C1F
+dw Tile63 9C20:9C2F
+dw Tile64 9C30:9C3F
+dw Tile65 9C40:9C4F
+dw Tile66 9C50:9C5F
+dw Tile67 9C60:9C6F
+dw Tile68 9C70:9C7F
+dw Tile69 9C80:9C8F
+dw Tile6A 9C90:9C9F
+dw Tile6B 9CA0:9CAF
+dw Tile6C 9CB0:9CBF
+dw Tile6D 9CC0:9CCF
+dw Tile6E 9CD0:9CDF
+dw Tile6F 9CE0:9CEF
+dw Tile70 9CF0:9CFF
+dw Tile71 9D00:9D0F
+dw Tile72 9D10:9D1F
+dw Tile73 9D20:9D2F
+dw Tile74 9D30:9D3F
+dw Tile75 9D40:9D4F
+dw Tile76 9D50:9D5F
+dw Tile77 9D60:9D6F
+dw Tile78 9D70:9D7F
+dw Tile79 9D80:9D8F
+
+
+// =~=~=~=~=~=~=~=~=~=~
+// Room A1 Tiles
+// Tiles 9D90:9F6F
+// Fixed size: 20x24
+// BSAVE "map_highscore.9d90",9D90:9F6F
+//
+// Demo map is at a different location!
+//    
+// =~=~=~=~=~=~=~=~=~=~
+//  var x,y,txt='',addr=0x9D90;
+//  for( y = 0; y < 24; y++, addr += 0x14 )
+//  for( x = 0; x < 20; x++ )
+//  {
+//       txt += 'db A1.' + ('00'+y).slice(-2)
+//       + '.' + ('00'+x).slice(-2)
+//       + '  ' + (addr.toString(16))
+//       + '+'
+//       + ('0' + x.toString(16)).slice(-2) + '\n';
+//  }
+//  console.log( txt );
+db A1.00.00  9d90+00
+db A1.00.01  9d90+01
+db A1.00.02  9d90+02
+db A1.00.03  9d90+03
+db A1.00.04  9d90+04
+db A1.00.05  9d90+05
+db A1.00.06  9d90+06
+db A1.00.07  9d90+07
+db A1.00.08  9d90+08
+db A1.00.09  9d90+09
+db A1.00.10  9d90+0a
+db A1.00.11  9d90+0b
+db A1.00.12  9d90+0c
+db A1.00.13  9d90+0d
+db A1.00.14  9d90+0e
+db A1.00.15  9d90+0f
+db A1.00.16  9d90+10
+db A1.00.17  9d90+11
+db A1.00.18  9d90+12
+db A1.00.19  9d90+13
+db A1.01.00  9da4+00
+db A1.01.01  9da4+01
+db A1.01.02  9da4+02
+db A1.01.03  9da4+03
+db A1.01.04  9da4+04
+db A1.01.05  9da4+05
+db A1.01.06  9da4+06
+db A1.01.07  9da4+07
+db A1.01.08  9da4+08
+db A1.01.09  9da4+09
+db A1.01.10  9da4+0a
+db A1.01.11  9da4+0b
+db A1.01.12  9da4+0c
+db A1.01.13  9da4+0d
+db A1.01.14  9da4+0e
+db A1.01.15  9da4+0f
+db A1.01.16  9da4+10
+db A1.01.17  9da4+11
+db A1.01.18  9da4+12
+db A1.01.19  9da4+13
+db A1.02.00  9db8+00
+db A1.02.01  9db8+01
+db A1.02.02  9db8+02
+db A1.02.03  9db8+03
+db A1.02.04  9db8+04
+db A1.02.05  9db8+05
+db A1.02.06  9db8+06
+db A1.02.07  9db8+07
+db A1.02.08  9db8+08
+db A1.02.09  9db8+09
+db A1.02.10  9db8+0a
+db A1.02.11  9db8+0b
+db A1.02.12  9db8+0c
+db A1.02.13  9db8+0d
+db A1.02.14  9db8+0e
+db A1.02.15  9db8+0f
+db A1.02.16  9db8+10
+db A1.02.17  9db8+11
+db A1.02.18  9db8+12
+db A1.02.19  9db8+13
+db A1.03.00  9dcc+00
+db A1.03.01  9dcc+01
+db A1.03.02  9dcc+02
+db A1.03.03  9dcc+03
+db A1.03.04  9dcc+04
+db A1.03.05  9dcc+05
+db A1.03.06  9dcc+06
+db A1.03.07  9dcc+07
+db A1.03.08  9dcc+08
+db A1.03.09  9dcc+09
+db A1.03.10  9dcc+0a
+db A1.03.11  9dcc+0b
+db A1.03.12  9dcc+0c
+db A1.03.13  9dcc+0d
+db A1.03.14  9dcc+0e
+db A1.03.15  9dcc+0f
+db A1.03.16  9dcc+10
+db A1.03.17  9dcc+11
+db A1.03.18  9dcc+12
+db A1.03.19  9dcc+13
+db A1.04.00  9de0+00
+db A1.04.01  9de0+01
+db A1.04.02  9de0+02
+db A1.04.03  9de0+03
+db A1.04.04  9de0+04
+db A1.04.05  9de0+05
+db A1.04.06  9de0+06
+db A1.04.07  9de0+07
+db A1.04.08  9de0+08
+db A1.04.09  9de0+09
+db A1.04.10  9de0+0a
+db A1.04.11  9de0+0b
+db A1.04.12  9de0+0c
+db A1.04.13  9de0+0d
+db A1.04.14  9de0+0e
+db A1.04.15  9de0+0f
+db A1.04.16  9de0+10
+db A1.04.17  9de0+11
+db A1.04.18  9de0+12
+db A1.04.19  9de0+13
+db A1.05.00  9df4+00
+db A1.05.01  9df4+01
+db A1.05.02  9df4+02
+db A1.05.03  9df4+03
+db A1.05.04  9df4+04
+db A1.05.05  9df4+05
+db A1.05.06  9df4+06
+db A1.05.07  9df4+07
+db A1.05.08  9df4+08
+db A1.05.09  9df4+09
+db A1.05.10  9df4+0a
+db A1.05.11  9df4+0b
+db A1.05.12  9df4+0c
+db A1.05.13  9df4+0d
+db A1.05.14  9df4+0e
+db A1.05.15  9df4+0f
+db A1.05.16  9df4+10
+db A1.05.17  9df4+11
+db A1.05.18  9df4+12
+db A1.05.19  9df4+13
+db A1.06.00  9e08+00
+db A1.06.01  9e08+01
+db A1.06.02  9e08+02
+db A1.06.03  9e08+03
+db A1.06.04  9e08+04
+db A1.06.05  9e08+05
+db A1.06.06  9e08+06
+db A1.06.07  9e08+07
+db A1.06.08  9e08+08
+db A1.06.09  9e08+09
+db A1.06.10  9e08+0a
+db A1.06.11  9e08+0b
+db A1.06.12  9e08+0c
+db A1.06.13  9e08+0d
+db A1.06.14  9e08+0e
+db A1.06.15  9e08+0f
+db A1.06.16  9e08+10
+db A1.06.17  9e08+11
+db A1.06.18  9e08+12
+db A1.06.19  9e08+13
+db A1.07.00  9e1c+00
+db A1.07.01  9e1c+01
+db A1.07.02  9e1c+02
+db A1.07.03  9e1c+03
+db A1.07.04  9e1c+04
+db A1.07.05  9e1c+05
+db A1.07.06  9e1c+06
+db A1.07.07  9e1c+07
+db A1.07.08  9e1c+08
+db A1.07.09  9e1c+09
+db A1.07.10  9e1c+0a
+db A1.07.11  9e1c+0b
+db A1.07.12  9e1c+0c
+db A1.07.13  9e1c+0d
+db A1.07.14  9e1c+0e
+db A1.07.15  9e1c+0f
+db A1.07.16  9e1c+10
+db A1.07.17  9e1c+11
+db A1.07.18  9e1c+12
+db A1.07.19  9e1c+13
+db A1.08.00  9e30+00
+db A1.08.01  9e30+01
+db A1.08.02  9e30+02
+db A1.08.03  9e30+03
+db A1.08.04  9e30+04
+db A1.08.05  9e30+05
+db A1.08.06  9e30+06
+db A1.08.07  9e30+07
+db A1.08.08  9e30+08
+db A1.08.09  9e30+09
+db A1.08.10  9e30+0a
+db A1.08.11  9e30+0b
+db A1.08.12  9e30+0c
+db A1.08.13  9e30+0d
+db A1.08.14  9e30+0e
+db A1.08.15  9e30+0f
+db A1.08.16  9e30+10
+db A1.08.17  9e30+11
+db A1.08.18  9e30+12
+db A1.08.19  9e30+13
+db A1.09.00  9e44+00
+db A1.09.01  9e44+01
+db A1.09.02  9e44+02
+db A1.09.03  9e44+03
+db A1.09.04  9e44+04
+db A1.09.05  9e44+05
+db A1.09.06  9e44+06
+db A1.09.07  9e44+07
+db A1.09.08  9e44+08
+db A1.09.09  9e44+09
+db A1.09.10  9e44+0a
+db A1.09.11  9e44+0b
+db A1.09.12  9e44+0c
+db A1.09.13  9e44+0d
+db A1.09.14  9e44+0e
+db A1.09.15  9e44+0f
+db A1.09.16  9e44+10
+db A1.09.17  9e44+11
+db A1.09.18  9e44+12
+db A1.09.19  9e44+13
+db A1.10.00  9e58+00
+db A1.10.01  9e58+01
+db A1.10.02  9e58+02
+db A1.10.03  9e58+03
+db A1.10.04  9e58+04
+db A1.10.05  9e58+05
+db A1.10.06  9e58+06
+db A1.10.07  9e58+07
+db A1.10.08  9e58+08
+db A1.10.09  9e58+09
+db A1.10.10  9e58+0a
+db A1.10.11  9e58+0b
+db A1.10.12  9e58+0c
+db A1.10.13  9e58+0d
+db A1.10.14  9e58+0e
+db A1.10.15  9e58+0f
+db A1.10.16  9e58+10
+db A1.10.17  9e58+11
+db A1.10.18  9e58+12
+db A1.10.19  9e58+13
+db A1.11.00  9e6c+00
+db A1.11.01  9e6c+01
+db A1.11.02  9e6c+02
+db A1.11.03  9e6c+03
+db A1.11.04  9e6c+04
+db A1.11.05  9e6c+05
+db A1.11.06  9e6c+06
+db A1.11.07  9e6c+07
+db A1.11.08  9e6c+08
+db A1.11.09  9e6c+09
+db A1.11.10  9e6c+0a
+db A1.11.11  9e6c+0b
+db A1.11.12  9e6c+0c
+db A1.11.13  9e6c+0d
+db A1.11.14  9e6c+0e
+db A1.11.15  9e6c+0f
+db A1.11.16  9e6c+10
+db A1.11.17  9e6c+11
+db A1.11.18  9e6c+12
+db A1.11.19  9e6c+13
+db A1.12.00  9e80+00
+db A1.12.01  9e80+01
+db A1.12.02  9e80+02
+db A1.12.03  9e80+03
+db A1.12.04  9e80+04
+db A1.12.05  9e80+05
+db A1.12.06  9e80+06
+db A1.12.07  9e80+07
+db A1.12.08  9e80+08
+db A1.12.09  9e80+09
+db A1.12.10  9e80+0a
+db A1.12.11  9e80+0b
+db A1.12.12  9e80+0c
+db A1.12.13  9e80+0d
+db A1.12.14  9e80+0e
+db A1.12.15  9e80+0f
+db A1.12.16  9e80+10
+db A1.12.17  9e80+11
+db A1.12.18  9e80+12
+db A1.12.19  9e80+13
+db A1.13.00  9e94+00
+db A1.13.01  9e94+01
+db A1.13.02  9e94+02
+db A1.13.03  9e94+03
+db A1.13.04  9e94+04
+db A1.13.05  9e94+05
+db A1.13.06  9e94+06
+db A1.13.07  9e94+07
+db A1.13.08  9e94+08
+db A1.13.09  9e94+09
+db A1.13.10  9e94+0a
+db A1.13.11  9e94+0b
+db A1.13.12  9e94+0c
+db A1.13.13  9e94+0d
+db A1.13.14  9e94+0e
+db A1.13.15  9e94+0f
+db A1.13.16  9e94+10
+db A1.13.17  9e94+11
+db A1.13.18  9e94+12
+db A1.13.19  9e94+13
+db A1.14.00  9ea8+00
+db A1.14.01  9ea8+01
+db A1.14.02  9ea8+02
+db A1.14.03  9ea8+03
+db A1.14.04  9ea8+04
+db A1.14.05  9ea8+05
+db A1.14.06  9ea8+06
+db A1.14.07  9ea8+07
+db A1.14.08  9ea8+08
+db A1.14.09  9ea8+09
+db A1.14.10  9ea8+0a
+db A1.14.11  9ea8+0b
+db A1.14.12  9ea8+0c
+db A1.14.13  9ea8+0d
+db A1.14.14  9ea8+0e
+db A1.14.15  9ea8+0f
+db A1.14.16  9ea8+10
+db A1.14.17  9ea8+11
+db A1.14.18  9ea8+12
+db A1.14.19  9ea8+13
+db A1.15.00  9ebc+00
+db A1.15.01  9ebc+01
+db A1.15.02  9ebc+02
+db A1.15.03  9ebc+03
+db A1.15.04  9ebc+04
+db A1.15.05  9ebc+05
+db A1.15.06  9ebc+06
+db A1.15.07  9ebc+07
+db A1.15.08  9ebc+08
+db A1.15.09  9ebc+09
+db A1.15.10  9ebc+0a
+db A1.15.11  9ebc+0b
+db A1.15.12  9ebc+0c
+db A1.15.13  9ebc+0d
+db A1.15.14  9ebc+0e
+db A1.15.15  9ebc+0f
+db A1.15.16  9ebc+10
+db A1.15.17  9ebc+11
+db A1.15.18  9ebc+12
+db A1.15.19  9ebc+13
+db A1.16.00  9ed0+00
+db A1.16.01  9ed0+01
+db A1.16.02  9ed0+02
+db A1.16.03  9ed0+03
+db A1.16.04  9ed0+04
+db A1.16.05  9ed0+05
+db A1.16.06  9ed0+06
+db A1.16.07  9ed0+07
+db A1.16.08  9ed0+08
+db A1.16.09  9ed0+09
+db A1.16.10  9ed0+0a
+db A1.16.11  9ed0+0b
+db A1.16.12  9ed0+0c
+db A1.16.13  9ed0+0d
+db A1.16.14  9ed0+0e
+db A1.16.15  9ed0+0f
+db A1.16.16  9ed0+10
+db A1.16.17  9ed0+11
+db A1.16.18  9ed0+12
+db A1.16.19  9ed0+13
+db A1.17.00  9ee4+00
+db A1.17.01  9ee4+01
+db A1.17.02  9ee4+02
+db A1.17.03  9ee4+03
+db A1.17.04  9ee4+04
+db A1.17.05  9ee4+05
+db A1.17.06  9ee4+06
+db A1.17.07  9ee4+07
+db A1.17.08  9ee4+08
+db A1.17.09  9ee4+09
+db A1.17.10  9ee4+0a
+db A1.17.11  9ee4+0b
+db A1.17.12  9ee4+0c
+db A1.17.13  9ee4+0d
+db A1.17.14  9ee4+0e
+db A1.17.15  9ee4+0f
+db A1.17.16  9ee4+10
+db A1.17.17  9ee4+11
+db A1.17.18  9ee4+12
+db A1.17.19  9ee4+13
+db A1.18.00  9ef8+00
+db A1.18.01  9ef8+01
+db A1.18.02  9ef8+02
+db A1.18.03  9ef8+03
+db A1.18.04  9ef8+04
+db A1.18.05  9ef8+05
+db A1.18.06  9ef8+06
+db A1.18.07  9ef8+07
+db A1.18.08  9ef8+08
+db A1.18.09  9ef8+09
+db A1.18.10  9ef8+0a
+db A1.18.11  9ef8+0b
+db A1.18.12  9ef8+0c
+db A1.18.13  9ef8+0d
+db A1.18.14  9ef8+0e
+db A1.18.15  9ef8+0f
+db A1.18.16  9ef8+10
+db A1.18.17  9ef8+11
+db A1.18.18  9ef8+12
+db A1.18.19  9ef8+13
+db A1.19.00  9f0c+00
+db A1.19.01  9f0c+01
+db A1.19.02  9f0c+02
+db A1.19.03  9f0c+03
+db A1.19.04  9f0c+04
+db A1.19.05  9f0c+05
+db A1.19.06  9f0c+06
+db A1.19.07  9f0c+07
+db A1.19.08  9f0c+08
+db A1.19.09  9f0c+09
+db A1.19.10  9f0c+0a
+db A1.19.11  9f0c+0b
+db A1.19.12  9f0c+0c
+db A1.19.13  9f0c+0d
+db A1.19.14  9f0c+0e
+db A1.19.15  9f0c+0f
+db A1.19.16  9f0c+10
+db A1.19.17  9f0c+11
+db A1.19.18  9f0c+12
+db A1.19.19  9f0c+13
+db A1.20.00  9f20+00
+db A1.20.01  9f20+01
+db A1.20.02  9f20+02
+db A1.20.03  9f20+03
+db A1.20.04  9f20+04
+db A1.20.05  9f20+05
+db A1.20.06  9f20+06
+db A1.20.07  9f20+07
+db A1.20.08  9f20+08
+db A1.20.09  9f20+09
+db A1.20.10  9f20+0a
+db A1.20.11  9f20+0b
+db A1.20.12  9f20+0c
+db A1.20.13  9f20+0d
+db A1.20.14  9f20+0e
+db A1.20.15  9f20+0f
+db A1.20.16  9f20+10
+db A1.20.17  9f20+11
+db A1.20.18  9f20+12
+db A1.20.19  9f20+13
+db A1.21.00  9f34+00
+db A1.21.01  9f34+01
+db A1.21.02  9f34+02
+db A1.21.03  9f34+03
+db A1.21.04  9f34+04
+db A1.21.05  9f34+05
+db A1.21.06  9f34+06
+db A1.21.07  9f34+07
+db A1.21.08  9f34+08
+db A1.21.09  9f34+09
+db A1.21.10  9f34+0a
+db A1.21.11  9f34+0b
+db A1.21.12  9f34+0c
+db A1.21.13  9f34+0d
+db A1.21.14  9f34+0e
+db A1.21.15  9f34+0f
+db A1.21.16  9f34+10
+db A1.21.17  9f34+11
+db A1.21.18  9f34+12
+db A1.21.19  9f34+13
+db A1.22.00  9f48+00
+db A1.22.01  9f48+01
+db A1.22.02  9f48+02
+db A1.22.03  9f48+03
+db A1.22.04  9f48+04
+db A1.22.05  9f48+05
+db A1.22.06  9f48+06
+db A1.22.07  9f48+07
+db A1.22.08  9f48+08
+db A1.22.09  9f48+09
+db A1.22.10  9f48+0a
+db A1.22.11  9f48+0b
+db A1.22.12  9f48+0c
+db A1.22.13  9f48+0d
+db A1.22.14  9f48+0e
+db A1.22.15  9f48+0f
+db A1.22.16  9f48+10
+db A1.22.17  9f48+11
+db A1.22.18  9f48+12
+db A1.22.19  9f48+13
+db A1.23.00  9f5c+00
+db A1.23.01  9f5c+01
+db A1.23.02  9f5c+02
+db A1.23.03  9f5c+03
+db A1.23.04  9f5c+04
+db A1.23.05  9f5c+05
+db A1.23.06  9f5c+06
+db A1.23.07  9f5c+07
+db A1.23.08  9f5c+08
+db A1.23.09  9f5c+09
+db A1.23.10  9f5c+0a
+db A1.23.11  9f5c+0b
+db A1.23.12  9f5c+0c
+db A1.23.13  9f5c+0d
+db A1.23.14  9f5c+0e
+db A1.23.15  9f5c+0f
+db A1.23.16  9f5c+10
+db A1.23.17  9f5c+11
+db A1.23.18  9f5c+12
+db A1.23.19  9f5c+13
+
+
+//////////////////////////////////////
+/// A190 .. A68F is a CODE OVERLAY ///
+//////////////////////////////////////
+// New Game = A190
+    // Disk IO params
+    // db A1A3:A1A3+4
+    db A1A3.Trk A1A3
+    db A1A3.Sec A1A3+1
+    da A1A3.Dst A1A3+2
+    db A1A3.Len A1A3+4
+
+    // Disk IO params
+    db A20D.Trk A20D
+    db A20D.Sec A20D+1
+    da A20D.Dst A20D+2
+    db A20D.Len A20D+4
+
+    // Disk IO params
+    db A215.Trk A215
+    db A215.Sec A215+1
+    da A215.Dst A215+2
+    db A215.Len A215+4
+
+    // Disk IO params
+    db A21D.Trk A21D
+    db A21D.Sec A21D+1
+    da A21D.Dst A21D+2
+    db A21D.Len A21D+4
+
+    // Disk IO params
+    db A23D.Trk A23D
+    db A23D.Sec A23D+1
+    da A23D.DLo A23D+2
+    db A23D.Len A23D+4
+
+    // Disk IO params
+    db A245.Trk A245
+    db A245.Sec A245+1
+    da A245.Off A245+2
+    db A245.Len A245+4
+
+    // Disk IO params
+    db A258.Trk A258
+    db A258.Sec A258+1
+    da A258.xxx A258+2
+    db A258.Len A258+4
+
+    da A269 // Params for $19DB
+
+    // Disk IO params
+    db A291.Trk A291
+    db A291.Sec A291+1
+    da A291.xxx A291+2
+    db A291.Len A291+4
+
+// Game Over A19A
+// @15BF: Read T1ESF -> A190 + 6 sectors
+    db A19D.Trk A19D    // T1E
+    db A19D.Sec A19D+1  // S09
+    da A19D.Dst A19D+2  // A1.00.01 = 9D90
+    db A19D.Len A19D+4  // #02 = $200
+
+    db A1AF.Trk A1AF    // T0A
+    db A1AF.Sec A1AF+1  // S0C
+    da A1AF.Dst A1AF+2  // $918E
+    db A1AF.Len A1AF+4  // #06 = $600
+
+    db A1B7.Trk A1B7    // T00
+    db A1B7.Sec A1B7+1  // S0F
+    dA A1B7.Dst A1B7+2  // $8001 HighScore
+    db A1B7.Len A1B7+4  // #01 = $100
+
+    asc HighScore A428:A437 // Player's High Score Entry
+
+// RWTS
+db PhaseOn   BA11:BA11+B
+db PhaseOff  BA1D:BA1D+B
+db Decode62  BA29:BA68
+db Interleave BFB8:BFB8+F // 0,D,B,9,7,5,3,1,E,C,A,8,6,4,2,F
+
+// ========================================
+// Symbolic Data
+// ========================================
+// Convenience sinze 52 is zSFX
+sym DstPageHGR = 53
+
+// ========================================
+// Functions
+// ========================================
+
+sym Main         = 0800
+sym Reset        = 0885 // Ctrl-Reset jumps here, set @A1C1
+sym GameLoop     = 08A1 // JSR $0DF9
+sym MapRollover  = 08BB // @155A
+
+sym UpdateTime   = 08E9 // 8B0: JSR UpdateTime -> 8E9:C6 B0 DEC $B0
+sym UpdateTime2  = 090D // Draw on HGR page 3 WHY???
+
+sym DrawUnknown  = 09D3 // ???	
+
+// 9E0:20 FE 13
+sym DrawMobs     = 09E0
+
+sym PlayCrashSFX = A0B
+
+sym isExitRoom   = A9A // Returns C=1 if player exited room
+sym isExitU      = AB0
+sym PlayerExitU  = AB7 // Player.y < $0E? Reset to $B0
+sym isExitD      = AC3
+sym PlayerExitD  = AC7 // Player.y > $B2? Reset to $10
+sym isExitL      = AD3
+sym PlayerExitL  = ADA // Player.x < $0A? Reset to $80
+sym isExitR      = AE5
+sym PlayerExitR  = AE9 // Player.x > $82? Reset to $0C
+
+sym ReadyToPlay  = AF6 // Called @A2D0 after K/J selection
+
+sym DrawRoom     = 0B22 // Called @0F12
+sym DrawRoom2    = 0B3E // Called @1512 width = 10, height = 4
+
+sym RoomNextRow  = B4B
+sym CopyRowToC4  = B4F
+
+sym NextTileH    = B81
+sym DrawTile     = B8A
+
+// BF7: LDA $801C // gPlayerX
+//      SEC
+//      SBC $8021 // gDeltaX ???
+
+// sym isTouch??? = 0CBD
+// sym isTouch2   = 0CCE
+
+sym GetInput     = 0DF9
+
+sym KeyAck       = E0A // STA $C010
+sym isKeyESC     = E10 // ESC
+sym isKeyCtrlQ   = E14 // Ctrl-Q
+sym onKeyCtrlQ   = E18
+sym onKeyESC     = E22
+sym exitKey      = E2E // if ![$98] -> $E97
+sym isKeyJ       = E39
+sym isKeyA       = E3D
+sym onKeyLeft    = E41
+sym isKeyD       = E4B
+sym onKeyRight   = E53
+
+sym isKeyK       = E51
+sym isKeyW       = E67
+sym isKeyI       = E6D
+sym isKeyM       = E79
+sym isKeyX       = E7D
+sym isJoystick   = E97
+
+sym NewRoom      = 0F12
+sym NewRoomExit  = 0F36
+
+sym DrawScore    = 0F50
+sym DrawScore.2  = 0F66
+
+sym DrawLevelNum = 0F8A
+
+// Src = AB7A ?
+// $A0
+// 
+// [A0] / 4 -> $50
+// [A1] 
+// OLD: DrawLevelChar
+// PutChar
+// Entry:
+//     A = char
+//     $CF = Cursor X
+//     $D0 = Cursor Y
+// Out:
+//     Y=A+1
+// Uses:
+//     $50 GlyphIndex = (char - ' ')
+//     $73,74
+// Example:
+//   9346:02 -> $5C = GlyphW
+//   9347:0A -> $5B = GlyphH
+//   9348:7F 79       GlyphData
+// Glyph starts at $918E ??? @0FEC: ADC #$8E, ADC #$91
+//                 $92EE = 
+// Pretty bad code
+//    FC8: CMP #$A0  ; >= space?
+//    FCA: BCS $0FCF ; yes
+//    FCC: JMP $0FF9 ; return but first PLA
+//    FCF: 
+sym PutChar       = 0FB1
+sym PutChar8D     = 0FB9
+sym PutCharExit   = 0FC4
+sym PutChar2      = 0FC8 // In: A; $A0 < A < #$DB
+sym PutGTE_A0     = 0FCF
+sym PutLT_DB      = 0FD6
+sym PutChar3      = 0FE2
+sym PutChar4      = 0FE9
+sym PutChar5      = 0FFD
+sym Redundant1    = FF9 // This FF9:FFC epilogue is duplicated from FC4:FC7
+sym Redundant2    = FFA
+sym Redundant3    = FFB
+sym Redundant4    = FFC
+
+
+sym DrawTimer     = 1011
+
+// @08BE (when room changed)
+sym ResetMobs     = 10A0
+
+// C=0 Not touching mob
+// C=1 Touching mob
+// Called for:
+//  * player
+//  * player bullet
+//     S 800:1FFF 20 9D 13  // XREF
+//   $125E:20 9D 13  // Player collided with enemy?
+//   $12A1:20 9D 13  // Player shoot enemy?
+sym isTouchMob    = 139D // Also used for bullets hit enemy! @12A1
+sym NotTouching   = 13E5
+
+sym DrawLifts     = 13FE
+
+sym PrintString  = 146A
+sym _PrintString = 1486
+
+sym ReadZone     = 15CA
+
+sym PlayWinSong  = 1493
+sym DrawPowerUp  = 162F
+
+// 1270: Touch enemey, decrease timer
+
+db SongTimeAdd  1393:139b
+
+sym OutOfTime = 159D /// ?
+
+// -----
+// Call RWTS for Disk Read
+// -----
+// 5 bytes / 4 params
+// 00: Track
+// 01: Sector
+// 02: Dst Low
+// 03: Dst Page
+// 04: Num sectors
+//
+// S 0:C000 20 A9 18  // 15 Results
+// u 0885 // DR 1
+z// u 1515 // DR 2 // immediately before "Keep Going"
+// u 15BF // DR 3
+// u 15DF // DR 4
+// u 15F6 // DR 5
+// u ???? // DR 6
+// u ???? // DR 7
+// u ???? // DR 8
+// u ???? // DR 9
+// u ???? // DR A
+// u ???? // DR B
+// u ???? // DR C
+// u ???? // DR D
+// u ???? // DR E
+// u ???? // DR F
+sym DiskRead  = 18A9 // Setup IOB params for RWTS
+sym DiskRead2 = 1900
+sym _CallRWTS = 1905 // Read sectors
+
+// DupHGR
+// 1. Copy FG to HGR Page 3
+// 2. Page Flip
+// 2. Copy HGR Page 3 to BG
+// HighScore: Copy Page $40 -> $60, Page $60->$20
+sym DupHGR      = 1921
+sym CopyHGRPage = 1937 // 
+
+
+sym KeepGoingWait  = 1950 // @1533: JSR KeepGoingWait; $1536 Done R4, next zone
+sym DelayYX        = 196C // @1A30 JMP $196C
+
+sym PlaySong       = 1975 // Pulls RET address -> $58,$59
+sym PlaySong.Note  = 197D
+sym PlaySong.FixPC = 1992 // Adjust return address
+
+// 4 args
+//  [0] -> $5F // Begin pitch
+//  [1] -> $6F // End   pitch
+//  [2] -> $6E // Delta pitch   (Arg0 + Arg2) < Arg1
+//  [3] -> $6D // Note Duration (smaller = less duration)
+//
+//     S 800:1FFF 20 A0 19  // XREF
+//                     md1 @1+3
+// [1] $09C3:20 A0 19  32 46 05 03
+// [2] $0A1E:20 A0 19  C8 FA 02 02
+// [3] $0B09:20 A0 19  C8 64 F6 0A
+// [4] $12EA:20 A0 19  AA 96 FC 02
+// [5] $15B1:20 A0 19  64 96 03 05
+sym PlaySFX      = 19A0 // See $53, $53
+sym PlaySFXNext  = 19C8 // Play next note in SFX song
+
+sym PlayNote    = 1A02
+sym PlayNote.1  = 1A09
+sym PlayNote.2  = 1A10
+sym PlayNote.3  = 1A18
+
+// Play next note in music, $4D = Song offset, data = [($4E)+$4D]
+//   == $00   reset loop
+//   == $FF   delay
+//   == $ppdd play note pitch & duration
+sym MusicPlay   = 1A19
+sym MusicLoop  = 1A1F // Reset back to first note
+sym MusicDelay = 1A25
+sym MusicNote  = 1A33
+
+sym PageFlip    = 1A49
+
+sym DrawPlay_0 = 1A5B // PageFlip
+sym DrawPlayMask = 1A5E // Then draw mask
+
+sym DrawPlayer  = 1A95
+sym DrawPlayer1 = 1AA1
+sym DrawPlayer2 = 1AB0
+sym DrawPlayer3 = 1B08
+sym DrawPlayer4 = 1B1A
+
+sym SetTileBG3 = 1DC6 // Sets Dst Tile to HGR Page 3
+sym GetDstHGR  = 1DFF // @0B81 // was old: GetTileAddr, GetTileColor
+
+// Entry:
+//     $73,74 = Pointer to Sprite (i.e. 95
+// Uses:
+//     $5B SpriteH
+//     $5C SpriteW
+//     $5D SpriteW2
+//     $77 pHGR
+sym PutSprite   = 1FB8
+sym _SpriteRow  = 1FD0
+sym _SpriteCol  = 1FDB
+
+
+// T1E,S9,#2 -> 9D90 High Score "Map"
+// T0A,SC,#6 -> 918E Font
+// T0S,SF,#1 -> 8001 High Score
+sym HighScore   = A19A 
+
+sym NewGame       = A190 
+sym DemoLoop      = A26B
+sym ExitDemo      = A28E
+sym WaitInputKJ   = A2B0
+sym WantJoystick  = A2C5
+sym HaveInputType = A2CB
+
+// To take control during the demo:
+//    A26B:20 D4 A2 // Original: JSR $A2D4
+/     A28B:8D 10 C0 // Original: STA KBDSTROBE
+//
+//    A26B:20 F9 0D // Manual Control // doesn't work -- gets input but no update
+//    A28B:30 DE
+sym DemoInput   = A2D4 // C=1 if exit room
+db DemoInputIdx = a32b // offset into table $A490
+
+// This is VERBATIM from DOS 3.3 Seek @39A0/B9A0
+sym DiskIO       = B7B5
+sym DiskErr      = B7BF
+sym rwtsPreNib16 = B800
+sym rwtsReadAddr = B944
+sym rwtsSeek     = B9A0
+sym rwtsSeek1    = B9AD
+sym rwtsSeekOut  = B9C0
+sym rwtsSeekMin  = B9C7
+sym rwtsSeekMax  = B9CB
+sym rwtsStep     = B9CF
+sym rwtsStep2    = B9D0
+sym rwtsSeek3    = B9FC
+sym rwtsSetPhase = B9EE
+sym MoveDiskHead = B9F1 
+sym MSWAIT       = BA00 // SeekDelay // // Delays until $46,$47 == 0
+sym MSWAIT1      = BA02
+sym MSWAIT2      = BA0B
+sym rwts         = BD00
+sym rwtsMotoroff = BD9E
+sym rwtsTryAddr1 = BDC1
+sym rwtsTryAddr2 = BDC9
+sym rwtsRecalib  = BDCE
+sym rwtsReadGood = BDED
+sym rwtsInitDisk = BE0D
+sym rwtsGoodTrack= BE10 // RTTRK
+sym rwtsGoodVol  = BE26
+sym rwtsMYSEEK   = BE5A
+sym rwtsMYSEEK2  = BE6B
+
+// Sets $77,78 pointer to HGR screen
+u Main
+
+// ========================================
+// Unknown Functions
+// ========================================
+echo "--- Unknown Functions ---"
+sym @ = 0960
+sym @ = 0964
+sym @ = 096B
+sym @ = 09D3
+sym @ = 0A0B
+sym @ = 0A2E // @09D6
+sym @ = 0A42 // @0A7A JMP $0A42
+sym @ = 0A4B
+sym @ = 0A4D
+sym @ = 0A7D // Returns 0 or 1 in X reg
+sym @ = 0C90
+sym @ = 0C9E // RTS
+sym @ = 0C9F // @0A9A isExitRoom
+sym @ = 0CBD
+sym @ = 0EE6
+sym @ = 0EFB
+sym @ = 0F02
+sym @ = 0F06
+sym @ = 1170
+sym @ = 122E
+sym @ = 13E7 // @09DC JSR
+sym @ = 13FE 
+sym @ = 15CA
+sym @ = 16D4
+sym @ = 1749
+sym @ = 19DB // 2 args // Update ???
+
+// old notes
+//BPX 0B09 // Play Exit Room Song
+//BPX 107  // Have map editor key
+
+echo "--- Done ---"
+
+// 8A4:20 64 09  // 
+// 8A4:AD
+
+// 8AA:20 D3 09  // Original: ???
+// 8AA:AD        // Erase moving mobs,elevators
+
+// 08AD:20 2E 12 // Original: ???
+// 08AD:AD       // Cheat: nop ???
+
+// 8B0: 20 E9 08 // UpdateTime
+// 8B3: AD
+
+// 8B3:20 E0 09  // Original: DrawMobs
+// 8B3:AD        // Cheat: nop ???
+// 9E0:20 FE 13  // Original: ???
+// 9e0:60
+
+// BPX AFE // INC zPlayerZone
+// BPX B34 // DrawRoom
+
+// F5C:18 // Original
+// F5C:60 // [18] Cheat: Don't update score
+
+// Map C3
+// 801C: 38 AC
+// Map D3
+// 
+
+// gPlayerX gPlayerY
+// 0C 43
+// // Hide under Scoreboard
+// 801C: 0B 0F
+// Room 3, World 1, D3
+// A330: 2F
+//   2F & 0F << 4 + F0 -> C4:E0
+//   2F & F0 >> 4 + 95 -> C4:98
+// A331: 42 -> 10, 9A
+// Store: -> C4..EB
+
+// Power Up Table
+// [0]  [1]  [2]  [3]  [4]  [5]  [6]  [7]
+// 90A6 90A7 90A8 90A9 90AA 90AB 90AC 90AD
+// 90AE 90AF ...
+// low  high 
+// @1633 @DrawPowerUp
+// Delta +8
+//                90A6     90A7     90A8    90A9  90AA  90AB  90AC
+// 90A6: 10 91 // LowAddr,HighAddr,RoomNum,???,  ???   ???   ???
+// 90AE: 10 91 
+// 9110: 1  RoomW // TileW
+// 9112: 2  RoomH // TileH
+// 
+// @1706
+//   LDA 9133,X // Room data for ???
+//
+//BPX 8BE
+//R PC ReadZone
+//G
+//R PC 8BB
+
