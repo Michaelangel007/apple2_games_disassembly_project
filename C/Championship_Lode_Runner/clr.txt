@@ -1,0 +1,195 @@
+// =-=-=-=-=-=-=-=-=-=-=-=-=
+// Championship Lode Runner
+// =-=-=-=-=-=-=-=-=-=-=-=-=
+// Reverse Engineered by Michaelangel007
+// AppleWin Debugger script
+
+// --- Zero Page ---
+db  TileX            1C
+db  RowsLeft         1D
+db  LastKey          1E
+
+// C64 Addresses are from
+// https://github.com/Piddewitt/Championship_Loderunner/blob/main/Championship%20Lode%20Runner/asm/it.asm
+// https://github.com/Piddewitt/Championship_Loderunner/blob/main/Championship%20Lode%20Runner/inc/CL_Var.asm
+//                      // C64 Address
+db  CLZ_ScreenCol    6A //   $4f
+db  CLZ_ScreenRow    6B //   $50
+db  CL_GameSpeedCtrl 71 // $1311
+db  CL_Score_Lo      73 // $130A BCD ......##
+db  CL_Score_MidLo   74 // $130B BCD ....##..
+db  CL_Score_MidHi   75 // $130C BCD ..##....
+db  CL_Score_Hi      76 // $130D BCD ##......
+db  CL_GoldToCollect 78 // $130E ==0, Init $00 @ $6D61, INC @ $6F3A
+db  CL_LevelNumDisk  7B // $1310 HEX, Level (zero-based) to read from disk
+db  CL_NumLives      7D // $1312 HEX, Init #05 @ $60D5
+db  CL_Volume        7E // $1313 Volume
+db  CL_LodeRuState   7F // $1314 == 0 Dead, == 1 Alive
+db  CL_LevelNumGame  89 // $1305 HEX, Level (one-based) to draw on scoreboard
+
+// i.e.
+// 7D:65
+// 89:7B
+// <Ctrl-A>
+db CL_SerialNumDigit1 B5
+db CL_SerialNumDigit2 B6
+db CL_SerialNumDigit3 B7
+db CL_SerialNumDigit4 B8
+db CL_SerialNumDigit5 B9
+db CL_InputBufMaxLen  CD
+db  Z_D5              D5 // Unknown
+
+// To see cheat codes inside the debugger
+//   400<76A9.76B5M
+//   TEXT
+sym IGC_Pause       = 75AE // $75AD [0] 9B  ESC IGC_Pause
+sym IGC_Resign      = 75B8 // $75B7 [1] 92  ^R  IGC_Resign
+sym IGC_Suicide     = 75BC // $75BB [2] 81  ^A  IGC_Suicide  (Abort)
+sym IGC_Sound       = 75BF // $75BE [3] 93  ^S  IGC_Sound
+sym IGC_SetJoystick = 75C8 // $75C8 [4] 8A  ^J  IGC_SetJoystick
+sym IGC_SetKeyboard = 75CF // $75CF [5] 8B  ^K  IGC_SetKeyboard
+sym IGC_IncSpeed    = 75FF // $75FE [6] 88  <-  IGC_IncSpeed
+sym IGC_DecSpeed    = 75F4 // $75F3 [7] 95  ->  IGC_DecSpeed
+sym IGC_SwapJoyX    = 75D6 // $75D5 [8] 98  ^X  n/a    // swaps joystick left-right $76CE $76CF:0C 30
+sym IGC_SwapJoyY    = 75E5 // $75E4 [9] 99  ^Y  n/a    // swaps joystick up-down    $76D0 $76D1:0C 30
+sym IGC_HighScores  = 8302 // $8301 [A] 8D  ^M  n/a    // View High Scores / Leaderboard
+sym IGC_?           = 76D2 // $76D1 [B] 82  ^B  IGC_?  // Toggles ZPG $D5
+// C64 has:
+//                            inc CL_LevelNumGame             ; inc game level number 001-050
+//                            inc CL_LevelNumDisk             ; inc disk level number 000-049
+//                            lsr CL_LodeRuState              ; set CL_LodeRuState_Death
+// Apple:  S 0:BFFF E6 7B E6 89
+//         Total: 0
+// Apple:  S 0:BFFF E6 89 E6 7B
+//         01:$6183
+//         Total: 1
+// Apple:  S 0:BFFF __ 7F
+
+
+
+// 75A3: IGC_Pause  JSR WaitKey          ; $8AC7
+// 75B1:            CMP #$9B             ; ESC
+// 75B3:            BNE IGC_Pause
+// 75B5:            JMP GameInputHandler ; $7569
+
+// --- Code ---
+sym ColdStart             = 6000
+sym GameStart             = 60C4
+sym OutSerialInfoMsg      = 6AFC
+sym GetNextSerialNumByte  = 6B85
+sym GenSecret1            = 6B8E
+sym GenSecret2            = 6B9A
+sym GenSecret3            = 6BA6
+sym GenSecret4            = 6BB2
+sym OutUniqueSecretPswdMs = 6BBE
+ 
+sym GameInputHandler    = 7569
+sym WaitKey             = 8AC7
+sym GetKey              = 8AD0
+sym TextOutHandler      = 8B2C
+sym GameWaitBlinkCursor = 8B4C
+sym ScreenDisplayClear  = 85CB
+
+// 8B74: JSR $8AD0 ; get key
+// 8B77: BMI $8B85
+// 756F: JSR $8AD0
+// 7575: STX $1E
+// 757C: CMP $CB ??	
+// 7583: CMP SpaceBar
+// 7587: STX LastKey ... Find Key in array -> Y
+// 76A9:76B6 ... 00 
+
+// 8B85: PHA
+// 8B86: LDA $8B8E ; 09
+// 8B89: JRS $86F1
+
+// ; Out: X,Y
+// 8CA6: LDA $1C51,Y -> Y
+// 8CAA: LDA $1C35,Y -> X
+
+
+// --- Data ---
+//; X = n*5, ArraySize=$1C
+//           0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F 10 11 12 13 14 15 16 17 18 19 1A 1B
+//1c35: HEX 00 05 0A 0F 14 19 1E 23 28 2D 32 37 3C 41 46 4B 50 55 5A 5F 64 69 6E 73 78 7D 82 87
+//1C51: HEX 00 0B 16 21 2C 37 42 4D 58 63 6E 79 84 8F 9A A5 B5 00 01 02 04 05 07 08 0A 0B 0C 0E
+//                                                             ^overflows into another table?
+DB MUL_5  1C35:1C50
+DB MUL_B  1C51:1C6C
+DB A_1C62
+DB A_1C7E
+DB A_1C9A
+DB A_1D26
+
+
+// Player Sprite on HGR1
+// 0051: 01     AND mask
+// 0090: FF C0  OR  mask
+// 2E29: 83 84 80
+// 
+
+ASC 6A24:6A2F //"YOU SCORE IS"
+ASC 6A30:6A3F //"S THE BEST EVER "
+ASC 6A40:6A4F //"  ENTER YOUR VIC"
+ASC 6A50:6A5F //"TORY MESSAGE    "
+ASC 6A60:6A6F //" >              "
+ASC 6A70:6A76 //"     < "
+
+ASC 6B03:6B0F //"CAREFULLY TY"
+ASC 6B10:6B1F //"PE IN THE SERIAL"
+ASC 6B20:6B2F //" NUMBER ON YOUR "
+ASC 6B30:6B3F //"CHAMPIONSHIP    "
+ASC 6B40:6B4F //" REGISTRATION CA"
+ASC 6B50:6B5F //"RD             >"
+ASC 6B60:6B66 //"     <"
+
+ASC 6BC8:6BCF // BELOW IS YOUR UNIQUE
+ASC 6BD0:6BDF // SECRET PASSWORD
+ASC 6BE0:6BEF // 
+ASC 6BF0:6BFF // WRITE IT ON YOUR
+ASC 6C00:6C0F // REGISTRATION CA
+ASC 6C10:6C1F // RD RIGHT NOW AN
+ASC 6C20:6C2F // D MAIL IT TO BRO
+ASC 6C30:6C3F //"DERBUND     AS S"
+ASC 6C40:6C4F //"OON AS POSSIBLE "
+ASC 6C50:6C5F //"          >AQADI"
+ASC 6C60:6C6F //"<          HIT A"
+ASC 6C70:6C75 //"KEY  "
+
+// XREF: 6B95, 6BA1, 6BAD, 6BB(
+ASC VENDOR_NAMES 6C80:6C84 // APPLE
+ASC VENDOR_C64   6C85:6C8D // COMMODORE
+ASC VENDOR_ATARI 6C8E:6C92 // ATARI
+
+
+db SecretCodeChar_01 6C5C //
+db SecretCodeChar_02 6C5D //
+db SecretCodeChar_03 6C5E //
+db SecretCodeChar_04 6C5F //
+
+ASC 6CA6:6CAF //"  DISKETTE "
+ASC 6CB0:6CBF //" IN DRIVE IS NOT"
+ASC 6CC0:6CCF //" A LODE RUNNER D"
+ASC 6CD0:6CD9 //"ATA DISK"
+
+ASC 6CDD:6CDF // HIT A KEY
+ASC 6CE0:6CEF // TO CONTINUE
+ASC 6CF0:6CF4
+
+ASC 6D16:6D1F // DISK SWAP
+ASC 6D20:6D2C // NOT ALLOWED
+
+// C64 has 10 cheat codes
+// A2  has 12 cheat codes
+
+// TabIGC = Table In-Game Cheat
+// Key                    ^[ ^R ^A ^S ^J ^K ^H ^U ^X ^Y ^M ^B
+// Index                 [ 0  1  2  3  4  5  6  7  8  9  A  B  C]
+DB CmdChar   76A9:76B5 // 9B 92 81 93 8A 8B 88 95 98 99 8D 82 00
+DA CmdAddr   76B6:76CD
+
+// Joystick Swap X & Y
+db JoyX_76CE 76CE
+db JoyX_76CF 76CF
+db JoyY_76D0 76D0
+db JoyY_76D1 76D1
