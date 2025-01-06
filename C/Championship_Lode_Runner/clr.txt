@@ -12,20 +12,23 @@ db  LastKey          1E
 // C64 Addresses are from
 // https://github.com/Piddewitt/Championship_Loderunner/blob/main/Championship%20Lode%20Runner/asm/it.asm
 // https://github.com/Piddewitt/Championship_Loderunner/blob/main/Championship%20Lode%20Runner/inc/CL_Var.asm
-//                      // C64 Address
-db  CLZ_ScreenCol    6A //   $4f
-db  CLZ_ScreenRow    6B //   $50
-db  CL_GameSpeedCtrl 71 // $1311
-db  CL_Score_Lo      73 // $130A BCD ......##
-db  CL_Score_MidLo   74 // $130B BCD ....##..
-db  CL_Score_MidHi   75 // $130C BCD ..##....
-db  CL_Score_Hi      76 // $130D BCD ##......
-db  CL_GoldToCollect 78 // $130E ==0, Init $00 @ $6D61, INC @ $6F3A
-db  CL_LevelNumDisk  7B // $1310 HEX, Level (zero-based) to read from disk
-db  CL_NumLives      7D // $1312 HEX, Init #05 @ $60D5
-db  CL_Volume        7E // $1313 Volume
-db  CL_LodeRuState   7F // $1314 == 0 Dead, == 1 Alive
-db  CL_LevelNumGame  89 // $1305 HEX, Level (one-based) to draw on scoreboard
+//                        // C64 Address
+db  CLZ_ScreenCol      6A //   $4f
+db  CLZ_ScreenRow      6B //   $50
+db  CL_GameSpeedCtrl   71 // $1311
+db  CL_Score_Lo        73 // $130A BCD ......##
+db  CL_Score_MidLo     74 // $130B BCD ....##..
+db  CL_Score_MidHi     75 // $130C BCD ..##....
+db  CL_Score_Hi        76 // $130D BCD ##......
+db  CL_GoldToCollect   78 // $130E ==0, Init $00 @ $6D61, INC @ $6F3A
+db  CL_ControllerType  7A // $CB 'K' = Keyboard, $CA 'J' = Joystick, Demo check @ $7514
+db  CL_LevelNumDisk    7B // $1310 HEX, Level (zero-based) to read from disk
+db  CL_NumLives        7D // $1312 HEX, Init #05 @ $60D5
+db  CL_Volume          7E // $1313 Volume
+db  CL_LodeRuState     7F // $1314 == 0 Dead, == 1 Alive
+db  CL_LevelNumGame    89 // $1305 HEX, Level (one-based) to draw on scoreboard
+db  CLZ_DemoMoveDuration 8E
+db  CLZ_DemoNoFunction   8F
 
 // i.e.
 // 7D:65
@@ -38,6 +41,28 @@ db CL_SerialNumDigit4 B8
 db CL_SerialNumDigit5 B9
 db CL_InputBufMaxLen  CD
 db  Z_D5              D5 // Unknown
+
+
+
+// 75A3: IGC_Pause  JSR WaitKey          ; $8AC7
+// 75B1:            CMP #$9B             ; ESC
+// 75B3:            BNE IGC_Pause
+// 75B5:            JMP GameInputHandler ; $7569
+
+// --- Code ---
+sym ColdStart             = 6000
+sym GameStart             = 60C4
+sym OutSerialInfoMsg      = 6AFC
+sym GetNextSerialNumByte  = 6B85
+sym GenSecret1            = 6B8E
+sym GenSecret2            = 6B9A
+sym GenSecret3            = 6BA6
+sym GenSecret4            = 6BB2
+sym OutUniqueSecretPswdMs = 6BBE
+
+sym DemoHandler           = 750F
+sym DemoEnd               = 7524
+sym GameInputHandler      = 7569
 
 // To see cheat codes inside the debugger
 //   400<76A9.76B5M
@@ -63,27 +88,18 @@ sym IGC_?           = 76D2 // $76D1 [B] 82  ^B  IGC_?  // Toggles ZPG $D5
 // Apple:  S 0:BFFF E6 89 E6 7B
 //         01:$6183
 //         Total: 1
-// Apple:  S 0:BFFF __ 7F
+// Apple:  S 0:BFFF 46 7F
+//         01: $7526
+//         02: $75BC
+//         03: $7766
+//         04: $7956
+//         05: $7A70
+//         06: $7B02
+//         07: $7B70
+//         08: $7C01
+//         Total: 9
 
 
-
-// 75A3: IGC_Pause  JSR WaitKey          ; $8AC7
-// 75B1:            CMP #$9B             ; ESC
-// 75B3:            BNE IGC_Pause
-// 75B5:            JMP GameInputHandler ; $7569
-
-// --- Code ---
-sym ColdStart             = 6000
-sym GameStart             = 60C4
-sym OutSerialInfoMsg      = 6AFC
-sym GetNextSerialNumByte  = 6B85
-sym GenSecret1            = 6B8E
-sym GenSecret2            = 6B9A
-sym GenSecret3            = 6BA6
-sym GenSecret4            = 6BB2
-sym OutUniqueSecretPswdMs = 6BBE
- 
-sym GameInputHandler    = 7569
 sym WaitKey             = 8AC7
 sym GetKey              = 8AD0
 sym TextOutHandler      = 8B2C
@@ -178,6 +194,10 @@ ASC 6CF0:6CF4
 
 ASC 6D16:6D1F // DISK SWAP
 ASC 6D20:6D2C // NOT ALLOWED
+
+
+// 0B,0C,0D,18,19,1A,0F,13 ...
+db 74BF:750E // Unknown
 
 // C64 has 10 cheat codes
 // A2  has 12 cheat codes
