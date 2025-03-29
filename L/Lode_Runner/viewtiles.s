@@ -14,6 +14,7 @@ KEYSTROBE = $C010
 TEXT = $F399
 HOME = $FC58
 HGR  = $F3E2 ; // We do not use since it is not on the Apple ][; only Apple ][+, etc.
+TABV = $FB5B ; STA CV, JMP VTAB
 VTAB = $FC22
 
         ORG $6000
@@ -48,7 +49,7 @@ ClearHGR    STA (zRow),Y
 AtlasChar
             INC zTile
             LDA zTile
-            CMP #$80      ; Done all 128 tiles?
+            CMP #$80      ; Drawn all 128 tiles?
             BEQ AtlasDone
             TAY
                 AND #$0F
@@ -72,6 +73,7 @@ AtlasDone   LDA #0
 
 NextSprite
         LDA zTile
+        STA $7D3            ; Display tile number as ASCII character
         PHA
           PHA
             ROR
@@ -79,7 +81,7 @@ NextSprite
             ROR
             ROR
             LDX #0
-            JSR PutChar
+            JSR PutChar    ; Display tile number in hexadecimal
           PLA
           JSR PutChar
         PLA
@@ -108,8 +110,7 @@ Prev    DEX
 
 Done    STA $C053
         LDA #23
-        STA zCV
-        JMP VTAB
+        JMP TABV
 
 PutChar AND #$F
         TAY
@@ -134,7 +135,7 @@ DrawSprite
         STA LastRow+1   ; ***SELF-MODIFIES***
 CopySprite
         LDA HGR_Y_HI,Y
-        ORA #$20
+        ORA #$20        ; HGR Page 1 = $2000
         STA SaveEvn+2
         STA SaveOdd+2
         LDA HGR_Y_LO,Y
@@ -196,14 +197,29 @@ HGR_Y_LO ;   0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
 HEX2ASC ASC "0123456789ABCDEF"
         DS \,0
 
-; 104 tiles, stored as char tiles[11][104]
-;   10x11 px
-;   High bit MUST be set for output
-; Originally in-game this is at $AD00
+; 104 tiles, 10x11 px. In C this would be:
+;
+;    uint8_t tiles[22][104]
+;
+; High bit MUST be set for output.
+; Originally in-game they are at $AD00 .. $B5FF.
+;
+;  | Scanline | Left Half      | Right Half     |
+;  |---------:|:---------------|:---------------|
+;  |        0 | $AD00 .. $AD67 | $AD68 .. $ADCF |
+;  |        1 | $ADD0 .. $AE37 | $AE38 .. $AEBF |
+;  |        2 | $AEA0 .. $AF07 | $AF08 .. $AF6F |
+;  |        3 | $AF70 .. $AFD7 | $AFD8 .. $B03F |
+;  |        4 | $B040 .. $B0A7 | $B0A8 .. $B10F |
+;  |        5 | $B110 .. $B177 | $B178 .. $B1DF |
+;  |        6 | $B1E0 .. $B247 | $B248 .. $B2AF |
+;  |        7 | $B2B0 .. $B317 | $B318 .. $B37F |
+;  |        8 | $B380 .. $B3E7 | $B3E8 .. $B44F |
+;  |        9 | $B450 .. $B4B7 | $B4B8 .. $B51F |
+;  |       10 | $B520 .. $B587 | $B588 .. $B5EF |
+;
 ; NOTE: Tiles 102 ($66) an 103 ($67) contain garbage glyph data.
 ;
-; i.e.
-;   $AD00 .. $AD67  ;  Tiles_Row0Left
 ;
 ; We :
 ; * Pad them out to be 128 bytes to make access fast
