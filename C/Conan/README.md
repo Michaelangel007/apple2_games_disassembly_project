@@ -2,7 +2,7 @@
 
 It was one of the first Apple 2 games to use a 1-bit [stencil buffer](https://en.wikipedia.org/wiki/Stencil_buffer) for foreground/background objects.
 
-* ![1-bit Stencil Buffer](pics/conan_hgr_stencil.png)
+* ![1-bit Stencil Buffer](pics/conan_hgr_and_stencil.png)
 
 I uploaded [this](](https://i.imgur.com/5ZtUmBh.png)) to imgur years ago.
 
