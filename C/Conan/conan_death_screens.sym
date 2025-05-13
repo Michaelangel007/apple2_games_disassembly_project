@@ -28,7 +28,7 @@ bpx 1A48
 // Disk Image: Conan2.dsk
 // bpx 1C6E
 // 19E4: EA EA EA <-- cheat already applied!
-// 19E4:CE 4B 03  <--  Original!
+// 19E4: CE 4B 03 <--  Original!
 // 1A37: 8E
 // 1A37: AE
 // sym LoadLevel    = 1A37
@@ -77,6 +77,9 @@ db  rng_371    = 371 // ???
 db  rng_37a    = 37A // ???
 db  rng_out    = 372 // output
 
+db  PlayerX    = 300
+db  PlayerY    = 301
+db  OnLadder   = 309
 db  Lives      = 34B
 db  AxesH      = 34D
 db  AxesL      = 34E
