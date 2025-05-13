@@ -149,7 +149,7 @@ random        ; 1EA8
 
 * **Level 7** -- There is a secret super jump move in the bottom right by holding down `Q` to jump up to the heighest floor.
 
-* **End Screen** -- Secret initials of `EP`.
+* **End Screen** -- Secret initials of `EP` -- probably for Eric Parker one of the game designers.
 
   * ![End screen](pics/conan_win.png)
 
