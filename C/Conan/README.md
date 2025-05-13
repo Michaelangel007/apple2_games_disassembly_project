@@ -1,4 +1,4 @@
-# Conan: Halls of Volta
+# Conan: Hall of Volta
 
 It was one of the first Apple 2 games to use a 1-bit [stencil buffer](https://en.wikipedia.org/wiki/Stencil_buffer) for foreground/background objects.
 
@@ -8,7 +8,7 @@ I uploaded [this](https://i.imgur.com/5ZtUmBh.png) to imgur years ago.
 
 # Death Screen
 
-There are 9 levels in Conan:
+Technically there are 9 levels in Conan:
 
 * Level 0 is the outside castle,
 * Levels 1 - 7 are playable, and
