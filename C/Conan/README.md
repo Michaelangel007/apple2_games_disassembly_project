@@ -86,7 +86,7 @@ Here are all the correct descriptions:
 
 Animated death icons:
 
-* ![Conan Death Icons](conan_death_icons_animated.gif)
+* ![Conan Death Icons](pics/conan_death_icons_animated.gif)
 
 # Easter Eggs
 
