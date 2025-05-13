@@ -51,6 +51,39 @@ Each of the 7 playable levels have 4 unique death messages (!):
 * ![Conan Level 7c](pics/conan_death_72.png)
 * ![Conan Level 7d](pics/conan_death_73.png)
 
+The [Conand - Guide and Walkthrough](https://gamefaqs.gamespot.com/appleii/577826-conan/faqs/7804) has an incomplete and incorrect list.
+
+Here are all the correct descriptions:
+
+* 1a  Back to Cimmeria barbarian!!
+* 1b  Bats in your belfry (moon)
+* 1c  Your Struggles are in Vain
+* 1d  Your odyssey has ended before it had begun (torch)
+* 2a  A watery barrier (river)
+* 2b  Quest terminated
+* 2c  There is no glory for you here (flower)
+* 2d  You withdraw battered and torn (tree)
+* 3a  Death at thy feet, life from above... (ants)
+* 3b  You beat a heated retreat... (lava)
+* 3c  Only a cleric can help you now (cleric)
+* 3d  You Succumb to Lassitude (cavern outline)
+* 4a  Thus, the story ended...
+* 4b  Conan's Bane! (mushroom mob on ledge)
+* 4c  The End (crossed swords)
+* 4d  You sink slowly into a peaceful bliss (vase)
+* 5a  You shuffle off defeated for now (quarter moon)
+* 5b  To be continued... (tombstone)
+* 5c  Adveture's End... (candle) [NOTE: mispelt Adventure]
+* 5d  The glow from the pyre lights the room (bonfire)
+* 6a  The eyes have it (3 eyes)
+* 6b  Thy fate is sealed (scroll)
+* 6c  A Shocking End (lightning)
+* 6d  Crom awaits (sword & goblet)
+* 7a  Volta's minions take you to the Loph-ka slave pits (horse)
+* 7b  Volta is victorious
+* 7c  You retire more dead than alive (island)
+* 7d  The Crimson Orb recedes on your horizon (sun)
+
 Animated death icons:
 
 * ![Conan Death Icons](conan_death_icons_animated.gif)
