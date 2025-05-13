@@ -88,6 +88,46 @@ Animated death icons:
 
 * ![Conan Death Icons](pics/conan_death_icons_animated.gif)
 
+# RNG
+
+When you first enter a level `ResetLevel` at $1A22 is called to initialize your score, axes, lives.
+
+* ![Debugger ResetLevel](pics/debugger_resetlevel.png)
+
+When you have no lives left ($34B) and die a death timer is started ($34F).  When it reaches #$18 the ShowDeathMessage at $1C7C is called.
+
+It calls `random()` which lives at $1EA8.  It then does `A mod 4` to determine which of the 4 death screens it should show for that level.
+
+* ![Debugger ShowDeathMsg](pics/debugger_showdeathmessage.png
+
+The death screen uses this RNG algorithm:
+
+```asm
+random        ; 1EA8
+    ROL $4E
+    ROL $037A
+    ROL $0371
+    LDA $4E
+    ASL
+    EOR $0371
+    ROL
+    ROL
+    ROL
+    ROL
+    ROL
+    PHA
+    ROL $4F
+    EOR $037A
+    STA $4E
+    PLA
+    STA $0371
+    ADC $4E
+    ADC $037A
+    STA $0372
+    RTS
+```
+
+
 # Easter Eggs
 
 * Introduction -- >!Wait for the music to stop playing to see the knight riding!<
