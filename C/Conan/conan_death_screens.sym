@@ -1,0 +1,96 @@
+// Conan: Halls of Volta (1984)
+// All Death Screens / Icons
+// by Michaelangel007
+// Copyleft {C} 2025
+// https://github.com/Michaelangel007/apple2_games_disassembly_project/tree/master/C/Conan
+
+// There are multiple disk images floating around on the net.
+// We wil be using qkumba's ProDOS port:
+//   conan 1-side bugfix PRODOS (san inc pack).dsk
+// and NOT the popular 2 disk cracked version
+//   Conan2.dsk
+
+bpx 1c7f // AND #$03
+bpx 1c9f // BIT KBDSTRB show death message
+
+// CHEAT: Stay on same level when dead
+// Disk: conan 1-side bugfix PRODOS (san inc pack).dsk
+// bpm 34b
+//1A48:8E  (STX Level)  original
+//1A48:AE  (LDX Level)  cheat
+// Cheat: Register X contains next level :-)
+bpx 1A48
+
+// R X # // level
+// 34B:0
+// 34F:1
+
+// Disk Image: Conan2.dsk
+// bpx 1C6E
+// 19E4: EA EA EA <-- cheat already applied!
+// 19E4:CE 4B 03  <--  Original!
+// 1A37: 8E
+// 1A37: AE
+// sym LoadLevel    = 1A37
+// sym NoLives      = 19EF
+// sym ShowDeathMsg = 1C6B 
+// sym Random       = 1E97
+// sym ResetLevel   = 1A11
+
+// 19F5: DEC $034B
+// 19F8: BMI $1A00
+// 19FA: LDX #6
+// 19FC: JSR $198B
+// 19FF: RTS
+
+// 1A00: INC $03FB (=$FF) OnNoLives
+// 1A0B: JSR $1C7C   ; ShowDeathMessage 
+
+// 167C: JSR $1EA8  ; random(), returns in A reg
+// On Level 1, A = #:
+//  // 0 = Back to Cimmeria barbarian!!!
+//  // 1 = Bats in your Belfry
+
+sym NextDeathAnim = 19CE
+sym P_19D9       = 19D9
+sym P_19F0       = 19F0
+sym LoadLevel    = 1A48
+sym P_1C08       = 1C08
+sym P_1C0F       = 1C0F
+sym P_1C31       = 1C31
+sym P_1F1E       = 1F1E
+
+sym DOS          = BD01
+sym UNPAK        = BE00 // Called from $6D10, uses $00, $01, $03
+sym ResetLevel   = 1A22
+sym NoLives      = 1A00
+sym random       = 1EA8
+sym ShowDeathMsg = 1C7C
+
+db  zUnpak00   = 00
+db  zUnpak01   = 01
+db  zUnpak03   = 03
+db  RngSeedL   = 4E
+db  RngSeedH   = 4F
+
+db  rng_371    = 371 // ???
+db  rng_37a    = 37A // ???
+db  rng_out    = 372 // output
+
+db  Lives      = 34B
+db  AxesH      = 34D
+db  AxesL      = 34E
+db  DeathTimer = 34F // 8 = particle, 18 = show death message; @ $A3FA
+db  Level      = 381 // LoadLevel @ $1A48: STX Level.  Change to LDX Level to stay on same level after death.
+
+da 6d13
+da 6d15
+da 6d17
+da 6d19
+
+da  DOS_NAME1  = BD44
+da  DOS_NAME2  = BD56
+//db  DOS_CMD   = 1A73 // no
+//da  DOS_PARAM = 1A74
+//db  NAME_LEN  = 1A77
+asc NAME_FILE   1A78:1A78+7
