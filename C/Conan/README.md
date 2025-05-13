@@ -164,3 +164,7 @@ qkumba did a [1-sided file conversion.](http://pferrie.epizy.com/misc/lowlevel16
 He closed with this cheeky statement:
 
 > With that problem solved, we can compress the data to the point that it fits on a single side of a floppy disk. Imagine what other levels the authors could have included with a whole other side of the disk...
+
+---
+
+Last updated: May 13, 2025.
