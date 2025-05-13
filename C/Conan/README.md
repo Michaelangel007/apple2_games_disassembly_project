@@ -14,7 +14,7 @@ There are 9 levels in Conan:
 * Level 8 is the end won screen
 * Levels 1 - 7 are playable
 
-Each of the 7 playable levels have 4 unique death messages (!):
+Each of the 7 playable levels have 4 unique death messages (!) for a whopping 28 unique death messages & artwork:
 
 * ![Conan Level 1a](pics/conan_death_10.png)
 * ![Conan Level 1b](pics/conan_death_11.png)
