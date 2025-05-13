@@ -141,15 +141,15 @@ random        ; 1EA8
 
 # Easter Eggs
 
-* **Introduction** -- Wait for the music to stop playing to see the knight riding
+* **Introduction** -- Wait for the music to stop playing to see the knight riding.
 
-* **Level 1** -- If you DON'T kil lthe bat and jump off the top of the building and there is a secret ladder in the tree that gives an extra life
+* **Level 1** -- If you DON'T kill the bat and jump off the top of the building and there is a secret ladder in the tree that gives an extra life.
 
-* **Level 3** -- Jump and hit the bird with your head for an extra life
+* **Level 3** -- Jump and hit the bird with your head for an extra life.
 
 * **Level 7** -- There is a secret super jump move in the bottom right by holding down `Q` to jump up to the heighest floor.
 
-* **End Screen** -- Secret initials of EP.
+* **End Screen** -- Secret initials of `EP`.
 
   * ![End screen](pics/conan_win.png)
 
