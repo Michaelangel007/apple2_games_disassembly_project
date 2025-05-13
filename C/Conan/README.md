@@ -10,11 +10,11 @@ I uploaded [this](](https://i.imgur.com/5ZtUmBh.png)) to imgur years ago.
 
 There are 9 levels in Conan:
 
-* Level 0 is the outside castle
-* Level 8 is the end won screen
-* Levels 1 - 7 are playable
+* Level 0 is the outside castle,
+* Levels 1 - 7 are playable, and
+* Level 8 is the end won screen.
 
-Each of the 7 playable levels have 4 unique death messages (!) for a whopping 28 unique death messages & artwork:
+Each of the 7 playable levels have 4 unique death messages (!) for a whopping 28 unique death messages & beautiful artwork:
 
 * ![Conan Level 1a](pics/conan_death_10.png)
 * ![Conan Level 1b](pics/conan_death_11.png)
@@ -73,7 +73,7 @@ Here are all the correct descriptions:
 * 4d  You sink slowly into a peaceful bliss (vase)
 * 5a  You shuffle off defeated for now (quarter moon)
 * 5b  To be continued... (tombstone)
-* 5c  Adveture's End... (candle) [NOTE: mispelt Adventure]
+* 5c  Adveture's End... (candle) [NOTE: misspelt "Adventure"]
 * 5d  The glow from the pyre lights the room (bonfire)
 * 6a  The eyes have it (3 eyes)
 * 6b  Thy fate is sealed (scroll)
