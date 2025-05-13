@@ -100,6 +100,17 @@ It calls `random()` which lives at $1EA8.  It then does `A mod 4` to determine w
 
 * ![Debugger ShowDeathMsg](pics/debugger_showdeathmessage.png)
 
+By manually setting the accumulator to 0 .. 3 we can manually control which death message is shown.
+
+We can also streamline this by setting a breakpoint on `ResetLevel` and then manually setting:
+
+* lives to zero, `34B:0`
+* death timer to one, `34F:0`
+
+our player will die once the level loads. :-)
+
+See the included AppleWin debugger script: [conan_death_screens.sym](conan_death_screens.sym).
+
 The death screen uses this RNG algorithm:
 
 ```asm
