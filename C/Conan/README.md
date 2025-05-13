@@ -51,7 +51,7 @@ Each of the 7 playable levels have 4 unique death messages (!) for a whopping 28
 * ![Conan Level 7c](pics/conan_death_72.png)
 * ![Conan Level 7d](pics/conan_death_73.png)
 
-The [Conand - Guide and Walkthrough](https://gamefaqs.gamespot.com/appleii/577826-conan/faqs/7804) has an incomplete and incorrect list.
+This Conan [Guide and Walkthrough](https://gamefaqs.gamespot.com/appleii/577826-conan/faqs/7804) has an incomplete and incorrect list.
 
 Here are all the correct descriptions:
 
