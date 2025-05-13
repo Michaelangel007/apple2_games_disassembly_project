@@ -157,7 +157,15 @@ random        ; 1EA8
 
   * ![Logo](pics/conan_easter_egg_text_screen.png)
 
-# ProDOS
+# Cheats
+
+A popular cracked version was hex edited with a 3 byte `NOP` patch to have infinite lives so you won't see the death messages in that version unless you manually undo the patch:
+
+```asm
+19E4: CE 4B 03
+```
+
+# ProDOS Port
 
 qkumba did a [1-sided file conversion.](http://pferrie.epizy.com/misc/lowlevel16.htm?i=1)
 
