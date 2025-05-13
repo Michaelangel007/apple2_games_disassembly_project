@@ -98,7 +98,7 @@ When you have no lives left ($34B) and die a death timer is started ($34F).  Whe
 
 It calls `random()` which lives at $1EA8.  It then does `A mod 4` to determine which of the 4 death screens it should show for that level.
 
-* ![Debugger ShowDeathMsg](pics/debugger_showdeathmessage.png
+* ![Debugger ShowDeathMsg](pics/debugger_showdeathmessage.png)
 
 The death screen uses this RNG algorithm:
 
