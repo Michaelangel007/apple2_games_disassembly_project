@@ -13,6 +13,8 @@ bpx 71DA
 
 // Nosh Kosh was originally written in Applesoft (!)
 // and compiled with Microsoft's TASC (The AppleSoft Compiler) (!!)
+// https://devblogs.microsoft.com/oldnewthing/20220419-00/?p=106496
+//
 //
 // There is a Microsoft copyright signature at $4F93:4FAC (Mem) in the file RUNTIME
 ASC 4F93:4FAC
@@ -21,16 +23,37 @@ MA2 AA75 // DOS last filename
 
 // FILE: N-R2.OBF
 // ENTRY: $4FAD
-sym RUNTIME.MAIN = 4FAD // JSR $4000// Called by DOS BRUN: N-R2.OBJ @ $A394
+// This is the compiled Applesoft program
+// TASC generates a short init stub
+//   4FAD: JSR TASC_INIT
+//   4FB0: DA ? ; [0] ???
+//   4FB2: DA ? ; [1] ???
+//   4FB4: DA ? ; [2] End-of-TASC runtime
+//   4FB6: DA ? ; [3] End-of-TASC runtime
+//   4FB8: DA ? ; [4] End-of-TASC runtime
+//   4FBA: DA ? ; [5] ???
+//   4FBC: DA ? ; [6] ???
+//   4FBE: DA ? ; [7] ???
+//   4FC0: DB 0 ; end of 16-bit pointers
+//   4FC1 First line of compiled Applesoft program
+sym Main = 4FAD // JSR $4000// Called by DOS BRUN: N-R2.OBJ @ $A394
 da 4FB0 // $78D7
-
-// https://devblogs.microsoft.com/oldnewthing/20220419-00/?p=106496
-
+da 4FB2 // $8948
+da 4FB4 // $4FAC = Main-1
+da 4FB6 // $4FAC = Main-1
+da 4FB8 // $4FAC = Main-1
+da 4FBA // $8209
+da 4FBC // $8940
+da 4FBE // $8948
+db 4FC0 // end-of-data pointers
+sym Game_1 = 4FC1
+da 4FCA // ?
 
 // --- Zero Page ---
 db LastInput A1
 
 // --- TASC Runtime ---
+sym TASC_INIT          = 4000 // after JSR has 8 words, null terminated, first Applesoft line is at $4FC1
 sym TASC_NextPop       = 41AE // Cleanup next args; pop 14 bytes from stack
 sym TASC_StoreFACptr   = 41E2 // next 2 bytes is float to store FAC to 
 sym TASC_Next          = 422E
