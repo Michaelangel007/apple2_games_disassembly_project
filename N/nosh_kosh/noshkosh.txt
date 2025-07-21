@@ -5,7 +5,12 @@
 // Apple2 Games Disassembly Project
 // https://github.com/Michaelangel007/apple2_games_disassembly_project/tree/master/N/nosh_kosh
 
+// AppleWin BUG: x 0000:FFFF
+
 // AppleWin Debugger script
+bpc
+bpx 71DA
+
 // Nosh Kosh was originally written in Applesoft (!)
 // and compiled with Microsoft's TASC (The AppleSoft Compiler) (!!)
 //
@@ -78,7 +83,11 @@ da 71E4
 da 71E6
 
 db 50f4
-da 50F5:50FC
+// AppleWin BUG: da 50F5:50FC
+da 50F5
+da 50F7
+da 50F9
+da 50FB
 
 sym P_590C = 590C // @71DE
 sym P_50EE = 50EE // @71E2
