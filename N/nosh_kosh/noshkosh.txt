@@ -1,0 +1,97 @@
+// =-=-=-=-=
+// Nosh Kosh
+// =-=-=-=-=
+// Reverse Engineered by Michaelangel007
+// Apple2 Games Disassembly Project
+// https://github.com/Michaelangel007/apple2_games_disassembly_project/tree/master/N/nosh_kosh
+
+// AppleWin Debugger script
+// Nosh Kosh was originally written in Applesoft (!)
+// and compiled with Microsoft's TASC (The AppleSoft Compiler) (!!)
+//
+// There is a Microsoft copyright signature at $4F93:4FAC (Mem) in the file RUNTIME
+ASC 4F93:4FAC
+MA1 4F93 // MS TASC copyright signature
+MA2 AA75 // DOS last filename
+
+// FILE: N-R2.OBF
+// ENTRY: $4FAD
+sym RUNTIME.MAIN = 4FAD // JSR $4000// Called by DOS BRUN: N-R2.OBJ @ $A394
+da 4FB0 // $78D7
+
+// https://devblogs.microsoft.com/oldnewthing/20220419-00/?p=106496
+
+
+// --- Zero Page ---
+db LastInput A1
+
+// --- TASC Runtime ---
+sym TASC_NextPop       = 41AE // Cleanup next args; pop 14 bytes from stack
+sym TASC_StoreFACptr   = 41E2 // next 2 bytes is float to store FAC to 
+sym TASC_Next          = 422E
+sym TASC_AddPCdata2    = 42A2
+sym TASC_46C2          = 46C2
+sym TASC_DrawSprite    = 46EB // @7145 Draw Player
+sym TASC_UpdateScreen  = 4CAD
+sym TASC_CallArrayFunc = 4CB7 // Dispatch from array of func ptrs
+sym GetInput           = 4F44
+
+// --- Code ---
+sym DrawEnemy       = 5728 // For loop 71B9..71BC
+sym DrawNextMapRow  = 5E11
+sym DoneDrawMap     = 5E47
+sym DrawFullMap     = 5E68 // @70CD
+sym DrawNextMapTile = 5E99 // Draw sprite, click speaker
+sym WaitInputType   = 6D7F
+sym HaveInputTYpe   = 6DA8
+sym FirstFrame      = 71C4 // JSR $41E2, endsup at MainLoop3
+sym MainLoop        = 71D7 // First playable frame ? $44AD, $51AB (RTS) -> $71E8
+sym MainLoop3       = 71DA
+
+// --- ROM ---
+sym ROM.VLIN_2      = F244
+sym ROM.HTAB_3      = F7EA
+sym ROM.VTAB_3      = F259
+sym ROM.CONINT_3    = E6FE // Entry Point E6FB // FAC to Byte -> X
+df CON_ONE          = E913 // Applesoft 1.0
+
+da 5E54 // $0000
+da 5E82 // $0000
+da 6DDE // $6DCC
+da 6EE4 // $6ED6
+da 6EFD // $6EF2
+da 6F54 // $0000
+da 6F56 // $0000
+da 70BC // $70B7
+da 7143 // $713E
+da 71BF // $0000
+da 71C7 // $82A2 // -> A.TMPST $55,$56; 420C: JSR STORE.FAC.AT.YX YX=$82A2
+df 82A2
+da 71D5 // $0000
+
+db 71DD
+// AppleWin BUG: da 71DE:71E7
+da 71DE
+da 71E0
+da 71E2
+da 71E4
+da 71E6
+
+db 50f4
+da 50F5:50FC
+
+sym P_590C = 590C // @71DE
+sym P_50EE = 50EE // @71E2
+sym P_6207 = 6207 // @71E4
+
+sym P_50FD = 50FD // @50F5
+sym P_5225 = 5225 // @5225
+sym P_534D = 534D // @50F9
+sym P_54C1 = 54C1 // @50FB
+
+//BPM 06EF // MeatHours
+//BPM 06F3 // MeatMinTens
+//BPM      // MeatMinOnes
+ASC TextMeatHours    06EF
+ASC TextMeatMinTens  06F3
+ASC TextMeatMinOnes  06F5
