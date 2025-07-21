@@ -2,16 +2,54 @@
 
 ![pics/title.png](pics/title.png)
 
-Nosh Kosh was originally written in Applesoft (!)
-and compiled with Microsoft's [TASC](https://devblogs.microsoft.com/oldnewthing/20220419-00/?p=106496) (The AppleSoft Compiler) (!!).
 
-The TASC runtime resides from $4000 .. $4FAC.
+# TASC
 
-There is a Microsoft copyright signature at $4F93:4FAC (Mem) in the file `RUNTIME`
+_Nosh Kosh_ was originally written in Applesoft (!)
+and compiled with Microsoft's [TASC](https://devblogs.microsoft.com/oldnewthing/20220419-00/?p=106496)(The AppleSoft Compiler) 2.01 (!!).
+
+We know this due to three reasons:
+
+1. There is a `RUNTIME` file on disk which is loaded by `HELLO` via ` 100  PRINT  CHR$ (4)"BLOAD RUNTIME,A$4000"`.  The TASC runtime resides from $4000 .. $4FAC.
+2. There is a Microsoft copyright signature at $4F93:4FAC (Mem) in the file `RUNTIME`
+3. There are multiple versions of TASC. Comparing the `RUNTIME` file on TASC 2.0 and [2.01](disk/ we find the 2.01 is 100% byte identical to the one on _Nosh Kosh_ !
+
+In AppleWin you can view memory and see the Microsoft copyright signature:
 
 ```
 ASC 4F93:4FAC
 MA1 4F93 // MS TASC copyright signature
+```
+Versions of TASC:
+
+| Disk name                       | Version | RUNTIME file size |
+|:--------------------------------|:--------|------------------:|
+| `TASC COMPILER.dsk`             | ?.?     | 3,969 |
+| `tasc-compiler.dsk`             | 2.0     | 4,013 |
+| `TASC 2.0 (Microsoft 1981).dsk` | 2.0     | 4,013 |
+| `TASC 2.01 (Microsoft 1981).dsk`| 2.01    | 4,013 |
+
+# N-R2.OBJ
+
+The Applesoft BASIC `HELLO` loads a few pictures, loads TASC RUNTIME, and the compiled program:
+
+```BASIC
+ 5 X =  FRE (0)
+ 10  HGR
+ 12  HOME : FOR D = 1 TO 20
+ 13  PRINT "NOSH KOSH "
+ 14  NEXT D
+ 15  POKE  - 16302,0
+ 30  PRINT  CHR$ (4)"BLOAD PIC.T1,A$2000"
+ 35  FOR D = 1 TO 1000: NEXT
+ 40  PRINT  CHR$ (4)"BLOAD CREDIT,A$4000"
+ 50  POKE  - 16299,0
+ 55  FOR D = 1 TO 1700: NEXT
+ 60  PRINT  CHR$ (4)"BLOAD PIC.T5,A$2000"
+ 65  FOR D = 1 TO 1700: NEXT
+ 70  POKE  - 16300,0
+ 100  PRINT  CHR$ (4)"BLOAD RUNTIME,A$4000"
+ 200  PRINT  CHR$ (4)"BRUNN-R2.OBJ"
 ```
 
 The file `N-R2.OBJ` resides at $4FAD and calls the RUNTIME.INIT ($4000) first thing.
