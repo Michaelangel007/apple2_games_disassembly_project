@@ -6,13 +6,13 @@
 # TASC
 
 _Nosh Kosh_ was originally written in Applesoft (!)
-and compiled with Microsoft's [TASC](https://devblogs.microsoft.com/oldnewthing/20220419-00/?p=106496)(The AppleSoft Compiler) 2.01 (!!).
+and compiled with Microsoft's [TASC](https://devblogs.microsoft.com/oldnewthing/20220419-00/?p=106496) (The AppleSoft Compiler) version 2.01 (!!).
 
 We know this due to three reasons:
 
 1. There is a `RUNTIME` file on disk which is loaded by `HELLO` via ` 100  PRINT  CHR$ (4)"BLOAD RUNTIME,A$4000"`.  The TASC runtime resides from $4000 .. $4FAC.
-2. There is a Microsoft copyright signature at $4F93:4FAC (Mem) in the file `RUNTIME`
-3. There are multiple versions of TASC. Comparing the `RUNTIME` file on TASC 2.0 and [2.01](disk/ we find the 2.01 is 100% byte identical to the one on _Nosh Kosh_ !
+2. There is a Microsoft copyright signature at $4F93:4FAC (memory) in the file `RUNTIME` (disk).
+3. There are multiple versions of TASC. Comparing the `RUNTIME` file on TASC 2.0 and [2.01](disk/TASC 2.01 \(Microsoft 1981\).dsk) we find the 2.01 is 100% byte identical to the one on _Nosh Kosh_ !
 
 In AppleWin you can view memory and see the Microsoft copyright signature:
 
