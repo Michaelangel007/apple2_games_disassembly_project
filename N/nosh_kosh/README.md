@@ -5,7 +5,7 @@
 Nosh Kosh was originally written in Applesoft (!)
 and compiled with Microsoft's [TASC](https://devblogs.microsoft.com/oldnewthing/20220419-00/?p=106496) (The AppleSoft Compiler) (!!).
 
-It resides from $4000 .. $4FAC.
+The TASC runtime resides from $4000 .. $4FAC.
 
 There is a Microsoft copyright signature at $4F93:4FAC (Mem) in the file `RUNTIME`
 
