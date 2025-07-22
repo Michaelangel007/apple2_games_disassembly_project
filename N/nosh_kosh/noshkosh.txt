@@ -26,7 +26,7 @@ MA2 AA75 // DOS last filename
 // This is the compiled Applesoft program
 // TASC generates a short init stub
 //   4FAD: JSR TASC_INIT
-//   4FB0: DA ? ; [0] ???
+//   4FB0: DA ? ; [0] Pointer to variables
 //   4FB2: DA ? ; [1] ???
 //   4FB4: DA ? ; [2] End-of-TASC runtime
 //   4FB6: DA ? ; [3] End-of-TASC runtime
@@ -37,7 +37,7 @@ MA2 AA75 // DOS last filename
 //   4FC0: DB 0 ; end of 16-bit pointers
 //   4FC1 First line of compiled Applesoft program
 sym Main = 4FAD // JSR $4000// Called by DOS BRUN: N-R2.OBJ @ $A394
-da 4FB0 // $78D7
+da 4FB0 // $78D7 "A1B13B60B15"...
 da 4FB2 // $8948
 da 4FB4 // $4FAC = Main-1
 da 4FB6 // $4FAC = Main-1
@@ -50,7 +50,8 @@ sym Game_1 = 4FC1
 da 4FCA // ?
 
 // --- Zero Page ---
-db LastInput A1
+// A0,A1 VPNT Applesoft (overlaps with FAC+3)
+//db LastInput A1
 
 // --- TASC Runtime ---
 // Install & vector so you can restart the compiled Applesoft program
@@ -61,6 +62,31 @@ sym TASC_NextPop       = 41AE // Cleanup next args; pop 14 bytes from stack
 sym TASC_StoreFACptr   = 41E2 // next 2 bytes is float to store FAC to 
 sym TASC_Next          = 422E
 sym TASC_AddPCdata2    = 42A2
+
+// Copy value of pointer (Y,A) to $A0,$A1
+// RESULT $63,63= Int pointer
+// VPNT = Var
+// X = Command
+// Y,A = Data Pointer
+// X
+// 0 $4470 TASC_SET_INT_DST
+// 1 $44AE
+// 2 $44EA
+// 3 $44C8
+// 4 $449A
+// 5 $4532
+// 6 $455A
+// 7 $455C
+// 8 $4582
+// 9 $457D
+// A $4574
+// B $4563
+// ? $458D
+sym TASC_SET_INT_DST   = 449C
+
+// X = Command
+// Y,A = Pointer to number
+sym TASC_INT_CMD_X     = 4503
 sym TASC_DrawSprite    = 46EB // @7145 Draw Player
 sym TASC_BREAK         = 4B48 // Print $D35D string `BREAK`
 // Technically called @ $794E
@@ -68,14 +94,19 @@ sym TASC_QUIT          = 4B60 // TASC @ $0803 =  $1363 Restore $00B1 CHRGET Appl
 sym TASC_QUIT2         = 4B62
 sym TASC_GET_DEC       = 4B96
 sym TASC_UpdateScreen  = 4CAD
-sym TASC_CallArrayFunc = 4CB7 // Dispatch from array of func ptrs
+sym TASC_ON_GOSUB_A    = 4CB7 // Dispatch from array of func ptrs
 sym TASC_ROT           = 4DB8 // TASC @ $0803 = $15BB
 sym TASC_SCALE         = 4DC1 // TASC @ $0803 = $15C4
 sym TASC_PEEK          = 4F44 // TASC @ $0803 = $1747
-// X = 0,81..FF Load FAC from Y,A
-// X = 1, Store FAC at YX
-// X = 2..80 see TASC_FAC_X
+
+// X Command
+// Y,A Pointer to number
+//   X = 0,81..FF Load FAC from Y,A
+//   X = 1, Store FAC at YX
+//   X = 2..80 see TASC_FAC_CMD_X
 sym TASC_FAC_LD_ST     = 4F61
+
+// Y,A Pointer to number
 // X register is FAC command
 // 0 = FDIV
 // 1 = FADD
@@ -84,7 +115,7 @@ sym TASC_FAC_LD_ST     = 4F61
 // 4 = FCOMP
 // 5 = Load ARG from YA
 // 6+ FDIV
-sym TASC_FAC_X         = 4F6A // X=0,1,2,3,4,5,6
+sym TASC_FAC_CMD_X     = 4F6A // X=0,1,2,3,4,5,6
 sym TASC_FAC_ADD       = 4F85 // JMP FADD
 sym TASC_FAC_SUB       = 4F82 // JMP FSUB
 sym TASC_FAC_COMP      = 4F7C
@@ -102,11 +133,12 @@ sym DrawFullMap     = 5E68 // @70CD
 sym DrawNextMapTile = 5E99 // Draw sprite, click speaker
 sym WaitInputType   = 6D7F // $7BD0 -> FAC @ $7082
 sym HaveInputType   = 6DA8
-sym FirstFrame      = 71C4 // JSR $41E2, endsup at MainLoop3
-sym MainLoop        = 71D7 // First playable frame ? $44AD, $51AB (RTS) -> $71E8
+sym FirstFrame      = 71C4 // JSR $41E2, ends up at MainLoop3
+sym MainLoop        = 71D7 // second+ playable frame $44AD, $51AB (RTS) -> $71E8
 sym MainLoop3       = 71DA
 sym Game_Quit1      = 78D4 // JMP $794E
 sym Game_Quit2      = 794E // JMP TASC_QUIT
+sym Game_GetState   = 7B37 // Game State @ $823C
 
 // --- ROM ---
 sym ROM.VLIN_2      = F244
