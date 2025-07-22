@@ -53,16 +53,46 @@ da 4FCA // ?
 db LastInput A1
 
 // --- TASC Runtime ---
+// Install & vector so you can restart the compiled Applesoft program
+// 4FAD: JSR $4000
+//   AD + 2 = 4FAD -> AMPERSAND.VECTOR $35F: JMP MAIN
 sym TASC_INIT          = 4000 // after JSR has 8 words, null terminated, first Applesoft line is at $4FC1
 sym TASC_NextPop       = 41AE // Cleanup next args; pop 14 bytes from stack
 sym TASC_StoreFACptr   = 41E2 // next 2 bytes is float to store FAC to 
 sym TASC_Next          = 422E
 sym TASC_AddPCdata2    = 42A2
-sym TASC_46C2          = 46C2
 sym TASC_DrawSprite    = 46EB // @7145 Draw Player
+sym TASC_BREAK         = 4B48 // Print $D35D string `BREAK`
+// Technically called @ $794E
+sym TASC_QUIT          = 4B60 // TASC @ $0803 =  $1363 Restore $00B1 CHRGET Applesoft
+sym TASC_QUIT2         = 4B62
+sym TASC_GET_DEC       = 4B96
 sym TASC_UpdateScreen  = 4CAD
 sym TASC_CallArrayFunc = 4CB7 // Dispatch from array of func ptrs
-sym GetInput           = 4F44
+sym TASC_ROT           = 4DB8 // TASC @ $0803 = $15BB
+sym TASC_SCALE         = 4DC1 // TASC @ $0803 = $15C4
+sym TASC_PEEK          = 4F44 // TASC @ $0803 = $1747
+// X = 0,81..FF Load FAC from Y,A
+// X = 1, Store FAC at YX
+// X = 2..80 see TASC_FAC_X
+sym TASC_FAC_LD_ST     = 4F61
+// X register is FAC command
+// 0 = FDIV
+// 1 = FADD
+// 2 = FSUB
+// 3 = FMULT
+// 4 = FCOMP
+// 5 = Load ARG from YA
+// 6+ FDIV
+sym TASC_FAC_X         = 4F6A // X=0,1,2,3,4,5,6
+sym TASC_FAC_ADD       = 4F85 // JMP FADD
+sym TASC_FAC_SUB       = 4F82 // JMP FSUB
+sym TASC_FAC_COMP      = 4F7C
+sym TASC_FAC_MULT      = 4F7F // JMP FMULT
+sym TASC_FAC_LOAD_ARG  = 4F88
+
+// --- TASC TODO ---
+sym TASC_46C2          = 46C2
 
 // --- Code ---
 sym DrawEnemy       = 5728 // For loop 71B9..71BC
@@ -70,11 +100,13 @@ sym DrawNextMapRow  = 5E11
 sym DoneDrawMap     = 5E47
 sym DrawFullMap     = 5E68 // @70CD
 sym DrawNextMapTile = 5E99 // Draw sprite, click speaker
-sym WaitInputType   = 6D7F
-sym HaveInputTYpe   = 6DA8
+sym WaitInputType   = 6D7F // $7BD0 -> FAC @ $7082
+sym HaveInputType   = 6DA8
 sym FirstFrame      = 71C4 // JSR $41E2, endsup at MainLoop3
 sym MainLoop        = 71D7 // First playable frame ? $44AD, $51AB (RTS) -> $71E8
 sym MainLoop3       = 71DA
+sym Game_Quit1      = 78D4 // JMP $794E
+sym Game_Quit2      = 794E // JMP TASC_QUIT
 
 // --- ROM ---
 sym ROM.VLIN_2      = F244
