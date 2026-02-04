@@ -1,0 +1,1257 @@
+// MIchaelangel007
+// v2 2026 Feb
+// v1 2023 Jun
+echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-"
+echo "          Dino Eggs           "
+echo "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-" 
+echo "Loading symbols ... "
+
+//symbasic ! MON.A2L
+//symmain  ! SPNT
+symmain  off
+symbasic off
+symasm   clear
+x 0:BFFF
+zpc *
+
+// P6 PROM $C600..$C6FF Zero Page
+sym P6ROMREAD = C05C
+da zPromDst       26 // PROM, 16-bit data pointer to next load address (dst buffer)
+db zPromSlot      2B // PROM, slot * 16 = $60
+db zPromSector    3D // PROM, next sector to read (or last)
+da zPromRead      3E // PROM, 16-bit func pointer to read sector, $C65C
+db zPromProlog    40 // PROM, number of 4&4 nibbles to addr prolog bytes to read
+db zPromVolume    41
+db zPromNumSec  0800 // PROM, Number of sectors to read
+
+// DOS 3.3A Zero Page usage
+db zSeekTrack     2A       // @MYSEEK2
+db Drive1Track   478:478+7 // + $06 = $47E
+db Drive2Track   4F8:4F8+7 // + $06 = $4FE
+
+// Address Field Meta Data decoded from 4&4
+// DOS 3.3 CSSTV = CheckSum Sector Track Volume in COREQUS, Written backwards @ B979 in RDADR16
+db zMetaChecksum  2C
+db zMetaSector    2D // Read @BE2E CMP zPhysicalSec; 
+db zMetaTrack     2E
+db zMetaVolume    2F
+
+da  DOSDEVCTBL     3C // Device Characteristic Table
+db  zDriveNo       35 // @MYSEEK2, @DriveSelect
+sym IOB_BASE     = 36 // 16-bit pointers IOB_DCT_PTR [6], IOB_BUFFER copied to $3C,3E
+db  zWriteTrack    44
+db  zDOSnsync      45 // @BFA2 (unused VTRACK func)
+db  zDctMotor      46 // @BD5E Copied from $
+da  zDosIOB        48
+
+// Sector Dst  Data   3  4  5  6  7  8   Assembly    Notes
+// [F] F   BF   A9 00 8D 00 B4 CE 03 BF  LDA #00
+// [E] 2   BE   D0 E5 F0 CA 68 A9 40 28  BNE $BDE7
+// [D] 4   BD   84 48 85 49 A0 02 8C 76  STY zDOSIOB
+// [C] 6   BC   07 FF 02 FF FF 01 FF 00  db  $07     Nibble Check Data
+// [B] 8   BB   A9 00 85 FE 20 58 FF BA  LDA #00     Original Nibble Check replaced with 4am's Ctrl-Reset Easter Egg
+// [A] A   BA   A2 11 CA D0 FD E6 46 D0  LDX #11 ... BA80..BAFF disk nibble
+// [9] C   B9   00 88 84 26 10 FB 59 00  DEY         ?
+// [8] E   B8   A2 00 A0 02 88 B1 3E 4A  LDX #00
+// [7] 1   B7   20 43 BF 4C 56 BC A9 01  JSR $BF43
+// [6] 3   B6   01 A5 27 C9 09 D0 18 A5  DB  #01     Second copy of Boot Sector!!
+// [5] 5   B5   FF 07 FF 02 FF FF 01 FF  DB  #FF     Garbage?  54: "801,0 802,208 803:205 804:0 ..."
+// [4] 7   B4   20 43 BF 20 DC B8 08 90  JSR $BF43
+// [3] 9   B3   01 A5 27 C9 09 D0 18 A5  DB  #01     Third copy of Boot Sector!!!
+// [2] B   B2   16 DA A2 06 D9 9A AD 00  DB  #16
+// [1] D   B1   4C 00 B7 53 43 52 45 45  JMP $B700   Left over PASCAL code!
+// [0] 0   B0   01 A5 27 C9 09 D0 18 A5  DB  #01     Original Boot Sector
+sym BootNext    = 81F
+
+// NOTE: This is also gPlyrClimbDone
+// sym Boot0Done   = 839
+
+// NOTE: This is also gGameTimer!
+//   If set to $01, no mobs will spawn!
+// @1701 INC $084D -> A, CMP $857,Y [0..2]
+// @173C LDA $084D, AND #$1F
+// @B168 STA $084D
+db  Log2PhysSec   84D:84D+F
+
+// Boot0  INC BootDstPage ; Wasted Bytes?
+//        INC BootDstPage ; Wasted Bytes?
+//        JSR SETKBD
+//        JSR SETVID
+//        JSR MONINIT
+//        LDX zBootSlot
+//        JMP (BootCont)  ; ->B100, Why not JUMP $B7000 ???
+// B100: JMP $B700
+// B700: JSR $BF43 // Copy IOB B7E8:B7F8 -> BA7A:BA8A [01 60 01 FE, 00 01 FB B7, 00 B7 00 99, 02 F8 FE 60, 01]
+// B703: JMP $BC56
+da  BootCont      8FD
+db  BootDstPage   8FE
+db  BootSecRem    8FF
+
+// -- Gameplay ---
+
+// Egg grid is not 14x4 = 56 ($38), but: $10 + $20xFloorNum
+//
+//               +------Can't place eggs here-----------+
+//               v                                      v
+// Floor Offset: 0  1  2  3  4  5  6  7  8  9  A  B  C  D
+//                  ^  ^  ^  ^  ^  ^  ^  ^  ^  ^  ^  ^
+//                  +--+--+ Can place eggs here+--+--+
+//
+// Floor Tile Debug:
+//   511:02 no egg
+//   511:06 1 egg   0110
+//   511:0A 2 eggs  1010
+//   511:0E 3 eggs  1110
+//                  ^^
+//                  Egg Counter
+//
+// Floor Tile bits
+//        AND #$80  1000 0000 TILE_POWER 
+//   @C10 AND #$40  0100 0000 TILE_STAIRS
+//   @C33 AND #$20  0010 0000 TILE_WOOD
+//   @CB1 AND #$10  0001 0000 TILE_ROCK
+//   @DEB AND #$0C  0000 1100 TILE_EGGS
+//                  0000 0000 TILE_EMPTY
+//   @????    #$01  0000 0001 TILE_VAR1  Tile variation 1
+//   @????    #$02  0000 0010 TILE_VAR2  Tile variation 2
+// NOTE: This is the VISUAL state of the level
+// Collision State for the level is stored elsewhere
+db Floor3        510:51D 
+db Floor2        530:53D
+db Floor1        550:55D
+db Floor0        570:57D
+
+
+sym DelayOrKey  = 818
+
+// $00..$0D Floor3  Y=
+// $20..$2D Floor2  Y=
+// $40..$4D Floor1  Y=
+// $60..$6D Floor0  Y=
+db gPlayerTX      828 // Player Tile X This Ranges from $00..$6D; e.g. It will $3B if climbing up/down
+db gPlayerTY      829 // Player Tile Y
+db gBotJumpY      82A // Y at bottom of Jump
+db _0835          835
+db _0838          838 // ???
+db gIsClimbing    839 // @C72 // <-- Player
+db DisplayLevel   83A
+db gPlayerY       83B
+db gPlayerEgg     83D // BCD // <-- Player FloorTile udpated @ $0E0B
+db gPlayerTM      85A // Location of Time Machine, ==$00 warping out/in
+
+// ??? Eggs remaining on level
+
+db gGameTimer    84D
+
+// Flag for contiminated???
+// 840: Timer ///  devolved?
+db  SoundOn      863
+
+// X=FF, Y=00
+// @AE3A JMP $880
+// 88B: STY $A800
+// 88E: STX $A80A
+// 891: STY $478
+// 894: STY $450
+// 897: JSR $8A18
+// 89A: LDX #$1C
+// 89C: JSR $1919
+// 89F: JMP $1235 ; GameLoop
+sym PreGameLoop = 880
+sym Timer8C3 = 08C3
+
+db JumpArcDown 8BD // 1 = Player is now falling from jump
+sym TestTopArc = B50 // Top of the jump arc?
+sym TopJumpArc = B55
+sym JumpDone   = B7E
+sym IsJumpBtn  = BB2
+sym PlayInJmp  = BB7
+sym PlayNoJmp  = BD9
+sym TestMoveUp = BF2
+
+sym IsTagTime = A40 // Is touchign the time machine?
+sym TouchTime = A65
+
+// CHEAT: Move up/Down anywhere
+// C70:EA EA
+// To restore
+// C70:F0 88
+
+sym TestLadder1 = C05
+sym TestLadder2 = C10
+sym MoveDown    = C1A
+sym MoveUp      = C2A
+sym AtFloorBtm  = C5A // Copys BotJumpY -> gPlyrTileY
+sym CanClimb    = C69
+sym SetClimb    = C72
+
+sym PickupEgg   = D78
+sym UpdateEgg   = DFC
+
+sym IncTileXFloor = F5E // Updates Player TileX to next floor
+sym UpdateTileX   = F64
+sym DecJumpBotm   = F68
+sym DecTileXFloor = F71
+
+sym PutTimeMiach = 10ED
+// 110B
+//   Updates gPlyrTileY
+//   Updates gBotJumpY
+
+db Mul3Add1 121D:1228
+db Mul3Add0 1229:1234
+
+// 1235:
+// 1262: JSR $1701 // Play poison snd, do death
+// 1263: JMP $1235
+sym GameLoop = 1235
+
+// Infinite Lives by qkumba
+// Increment Death Counter $A800
+// 1895:AD [EE]
+
+db SFXdur    1E6F
+db SFXpitch  1E70 
+//sym LeaveLevel  = 1E77  // 1E6F:80 -> FF
+
+sym SoundDone = 1E82
+
+// Tile-set for each level loaded to $6000
+// Addr  Lev Track
+// 951E: [0] $1C // Orange ground, File: DINO.EGGS.1C
+// 951F: [1] $22 // Blue   ground, File: DINO.EGGS.22
+// 9520: [2] $1F // Green  ground, File: DINO.EGGS.1F
+// 9521: [3] $1C // Orange ground
+// 9522: [4] $22 // Blue   ground
+// 9523: [5] $1F // Green  ground
+// 9524: [6] $1C // Orange ground
+// 9525: [7] $22 // Blue   ground
+// 9526: [8] $1F // Green  ground
+// 9527: [9] $0E // Purple ground
+db LevelTrack      951E:951E+9
+sym LoadTileset  = 9528 // Load Tileset for Level
+sym LoadTileset1 = 9531
+sym ClearMap     = 9564
+
+sym PrintScore = 9A8B
+db  PrintLen     9BD5
+
+/// --- Status Text ---
+db StatusLo  A102:A121
+db StatusHi  A122:A141
+
+dt A142:*+E // [ 0]: "   HAS POWER   "
+dt A151:*+E // [ 1]: "   POWER GAIN  "
+dt A160:*+E // [ 2]: "   POWER LOST  "
+dt A16F:*+E // [ 3]: " CONTAMINATION "
+dt A17E:*+E // [ 4]: "  WATCH CLOCK! "
+dt A18D:*+E // [ 5]: "  FIRE STARTED "
+dt A19C:*+E // [ 6]: " FIRE GOING OUT"
+dt A1AB:*+E // [ 7]: "DINO MOM COMING"
+dt A1BA:*+E // [ 8]: "DINO MOM ATTACK"
+dt A1C9:*+E // [ 9]: " FIRE EXTENDED "
+dt A1D8:*+E // [ A]: "               "
+dt A1E7:*+E // [ B]: " EGGS POISONED "
+dt A1F6:*+E // [ C]: "  WARPING OUT  "
+dt A205:*+E // [ D]: "  WARPING IN   "
+dt A214:*+E // [ E]: " DINO HATCHING "
+dt A223:*+E // [ F]: "  DINO CAGED   "
+dt A232:*+E // [10]: " EARTH TREMOYS "
+dt A241:*+E // [11]: " LEAVE CLIFF Q "
+dt A250:*+E // [12]: " SKILL LEVEL X "
+dt A25F:*+E // [13]: "ABANDONDED CLIFF"
+dt A26E:*+E // [14]: "BONUS 10 POINTS"
+dt A27D:*+E // [15]: "BURNT TO DEATH!" 0B 1E 1B 17 1D 27 1D 18 27 0D 0E 0A 1D 11 26
+dt A28C:*+E // [16]: "   SMASHED!    "          1C 16 0A 1C 11 0E 0D 26
+dt A29B:*+E // [17]: "   TO LEVEL X  "
+dt A2AA:*+E // [18]: "  START A FIRE "
+dt A2B9:*+E // [19]: "  DEVOLUTION!  "
+dt A2C8:*+E // [1A]: "  END OF GAME  "
+dt A2D7:*+E // [1B]: " BEGINNING GAME"
+dt A2E6:*+E // [1C]: "SCORES   FINAL>"
+
+// A2F5:A300 unknown
+
+// Scrolling introduction text
+dt A300:*+F  // " EXPLORING THE "
+dt A310:*+F  // "PREHISTORIC PAST"
+dt A320:*+F  // "VIA TIME WARP --"
+dt A330:*+F  // " You INFECT THE "
+dt A340:*+F  // " DINOSAURS WITH "
+dt A350:*+F  // "COMMON MEASLES--"
+dt A360:*+F  // "  ACCIDENTALLY  "
+dt A370:*+F  // "CONDEMNING THEM "
+dt A380:*+F  // " TO EXTINCTION! "
+dt A390:*+F  // " OVERCOME WITH  "
+dt A3A0:*+F  // " REMORSE -- YOU "
+dt A3B0:*+F  // "DEVOTE YOURSELF "
+dt A3C0:*+F  // "TO RESCUING THE "
+dt A3D0:*+F  // "ENTIRE DINOSAUR "
+dt A3E0:*+F  // "  POPULATION!   "
+dt A3F0:*+F  // " YOU CAN DO IT! "
+
+
+// 360:1 1  // Has Power?
+
+// Copied @BC7C:
+//       0  1  2  3  4  5  6  7  8  9  A
+// 2000:04 10 10 04 60 04 60 00 00 00 07 -> A800:
+//      Men      -100  High           Lev
+// Men        = 5
+// High Score = 460
+// Score      = -100
+// Level      = 8 (incremented on NewLevel)
+// This is reset at 880 PreGameLoop
+// e.g.
+//   2003:11 22 33 44 Shows HighScore 3344
+//   
+db Men         A800 // <--- Player
+//             A801 // ???
+//             A802 // ??? @B669
+db Score32     A803 // BCD Top
+db Score10     A804 // BCD Bot
+// Cross Reference
+// A06F, A077 print high score
+// B062, B075 test if score > high score
+// B07D: JSR $BF12 Write high score to Track $8, Sector $8
+db HighScore32 A805 // BCD Top   @A06F, @A077, @B062, @B075
+db HighScore10 A806 // BCD Bot
+db Level       A80A // @1938: INC $A80A // Called via B535: JSR $AE9B
+
+
+db _HasJump      A89B
+db _HasUse       A89C
+db PrevButn0     A89D
+db PrevButn1     A89E
+db _JoyMoveL     A89F // @A8BC
+db _JoyMoveR     A8A0 // @A933
+db _JoyMoveU     A8A1
+
+
+// Check for:
+//   Ctrl-S  Toggle sound
+//   Ctrl-R  Restart level
+//   Return  Restart level
+sym Main          = A892
+sym CheckInput    = A895
+sym CheckJoystick = A898
+sym IsGameKey     = A8A2
+sym HaveGameKey   = A8A8
+sym MenuCR        = A8B9
+sym DoPause       = A8C5
+sym ToggleSnd     = A8D3
+sym MenuOptions   = A8B9
+sym RestartGame   = A8BF
+sym GetInput      = A8DF
+sym GetAtariJoy   = A8E7
+
+// Joystick Buttons pressed?
+sym CheckJoyBtn  = A938
+sym CheckJoyBtn2 = A94A
+
+// NOTE: Only called for ATARI Joysticks @ $A8EC, $A900
+//           Pressed   Out    X-Ref
+// Button 0    n/a     n/a    ?
+// Button 1     0       0     $A906
+// Button 1     1       FF    :
+// Button 2     0       0     $A953
+// Button 2     1       1     :
+//                 0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+// Original: 1951:   A2 FF AD 62 C0 10 07 E8 AD 63 C0 30 01 E8 60
+// DEBUG:     300:A2 FF AD 62 C0 10 07 E8 AD 63 C0 30 01 E8 60
+//            30E:8E 00 04 EA A2 AD A0 B1
+//            316:AD 61 C0 30 05 8E 03 04 10 03 8C 03 04 C8
+//            324:AD 62 C0 30 05 8E 05 04 10 03 8C 05 04 C8
+//            332:AD 63 C0 30 05 8E 07 04 10 03 8C 07 04 60
+//
+// OUT:
+//   X=FF button 1 or 2 not pushed
+//   X=00 button 2 pushed
+//   X=01 button 1 pushed
+sym MapAtariBtn  = A951
+sym MapAtaruBtn1 = A95F
+
+// IN:  Y=axis value
+//              X   Y
+// OUT: Y < 2C  FF FF
+//      Y < 66  00 FF
+//      Y < 99  00 00
+//      Y < D3  01 00
+//      Y > D3  01 01
+sym MapJoyMove  = A960
+sym MapJoyMove2 = A979
+sym GetJoystick = A97A
+sym ReadJoyY    = A980
+
+SYM ReadJoyX = A928
+//SYM ReadJoyY = 
+
+// Sky, DinoLeg, etc.
+sym DrawSprite   = AA0A // @A9C2 JSR $AA0A, dras on page 1 or 2
+db SpriteW          850 // ???
+db SpriteH         A51A // ???
+
+sym TestMenuKey = AD71
+sym HaveMenuKey = AD7A
+sym MenuSound   = AD89
+sym MenuEsc     = AD91
+sym MenuNotCR   = AD95
+
+sym WhichJoy    = ADFB
+sym PlaySnd     = AEB9
+sym PlaySnd1    = AEBF
+sym PlaySnd2    = AEC2
+sym PlaySnd3    = AECA
+sym PlaySndEnd  = AED3
+
+
+
+db _WhichJoy     AD58
+asc InputText    AE4A:AE4F 
+asc              AE50:AE5D
+asc InputText2   AE5E:AE5F
+asc              AE60:AE6F
+asc              AE70:AE76
+db _JoyTypeApple AE77  // 0 = Atari, 1 = Apple
+
+// @ AF34
+db Colors B04E:B058
+
+// AED4 @AD95 STA #$40
+// AED5 @AD9A STA #$0
+db _AED4     AED4
+db _SoundLen AED5
+
+// =-=-=-=-=-=-=-=-=-=-= Custom DOS 3.3 =-=-=-=-=-=-=-=-=-=-=
+
+dw MONTIME         46 // @ $BD9A
+dw FTOC           20C:2B9 // Biggest File is on T15SF
+db curtrk         478 // DOS 3.3 same
+db nRwtsSlot      475 // DOS 3.3 @ 678
+db recalccnt      476 // DOS 3.3 @ 4F8
+db seekcnt        4F8 // DOS 3.3 same
+db RETRYCNT       578 // @B6FC
+db slot           5F8 // dos 3.3 same
+sym NBUF1      = 0600 // @B8C9, Noramlly $BB00..$BBFF
+sym NBUF2      = 0700 // @B8CC, Normally $BC00..$BC55
+
+sym Drive1 = $C08A
+sym Drive2 = $C08B
+sym Q6L    = $C08C
+sym Q6H    = $C08D
+sym Q7L    = $C08E
+sym Q7H    = $C08F
+
+
+// Boot Tracing 
+//   T00S0 @084A -> $B100
+//   T00S1 @B100 -> $B700
+//   T00S7
+//   T00SC    @56 $BC56
+//     Set Ctrl-Reset $BCFA:00 BB 1E -> $3F2:
+//   BC61: Read [13,F] -> $0400..???? via $BC8A LoadFile
+//   BC67: Read [15,F] -> $6000..???? via $BC8A
+//   BC73: Read [1B,F] -> $2000..???? via $BC8A
+//   Copy: 2000:200A -> A800 // Death Counter and stats!  Note: $A800 is saved $BF12
+//   BC87: JMP $A892
+//
+//  "File:" DINO.EGGS.T13
+//    T13SD $0400
+//    T13SC $0500
+//    T13SB $0600 // WTF?! This loads into NBUF1 !?
+//    T13SA $0700 // WTF?! This loads into NBUF2 !?
+//    T13S9 $0800
+//    T13S8 $0900
+//    T13S7 $0A00
+//    T13S6 $0B00
+//    T13S5 $0C00
+//    T13S4 $0D00
+//    T13S3 $0E00
+//    T13S2 $0F00
+//    T13S1 $1000
+//    T13S0 $1100
+//    T14SF $1200
+//    T14SE $1300
+//    T14SD $1400
+//    T14SC $1500
+//    T14SB $1600
+//    T14SA $1700
+//    T14S9 $1800
+//    T14S8 $1900
+//    T14S7 $1A00
+//    T14S6 $1B00
+//    T14S5 $1C00
+//    T14S4 $1D00
+//    T14S3 $1E00
+//    T14S2 $1F00
+// 
+//"File:" DINO.EGGS.T15
+//    T15SD $6000 "Orange Ground", Level 0
+//    T15SC $6100
+//    T15SB $6200
+//    T15SA $6300
+//    T15S9 $6400
+//    T15S8 $6500
+//    T15S7 $6600
+//    T15S6 $6700
+//    T15S5 $6800
+//    T15S4 $6900
+//    T15S3 $6A00
+//    T15S2 $6B00
+//    T15S1 $6C00
+//    T15S0 $6D00
+
+//    T16SF $6E00
+//    T16SE $6F00
+//    T16SD $7000
+//    T16SC $7100
+//    T16SB $7200
+//    T16SA $7300
+//    T16S9 $7400
+//    T16S8 $7500
+//    T16S7 $7600
+//    T16S6 $7700
+//    T16S5 $7800
+//    T16S4 $7900
+//    T16S3 $7A00
+//    T16S2 $7B00
+//    T16S1 $7C00
+//    T16S0 $7D00
+
+//    T17SF $7E00
+//    T17SE $7F00
+//    T17SD $8000
+//    T17SC $8100
+//    T17SB $8200
+//    T17SA $8300
+//    T17S9 $8400
+//    T17S8 $8500
+//    T17S7 $8600
+//    T17S6 $8700
+//    T17S5 $8800
+//    T17S4 $8900
+//    T17S3 $8A00
+//    T17S2 $8B00
+//    T17S1 $8C00
+//    T17S0 $8D00
+
+//    T18SF $8E00
+//    T18SE $8F00
+//    T18SD $9000
+//    T18SC $9100
+//    T18SB $9200
+//    T18SA $9300
+//    T18S9 $9400
+//    T18S8 $9500
+//    T18S7 $9600
+//    T18S6 $9700
+//    T18S5 $9800
+//    T18S4 $9900
+//    T18S3 $9A00
+//    T18S2 $9B00
+//    T18S1 $9C00
+//    T18S0 $9D00
+
+//    T19SF $9E00
+//    T19SE $9F00
+//    T19SD $A000
+//    T19SC $A100
+//    T19SB $A200
+//    T19SA $A300
+//    T19S9 $A400
+//    T19S8 $A500
+//    T19S7 $A600
+//    T19S6 $A700
+//    T19S5 $A800
+//    T19S4 $A900
+//    T19S3 $AA00
+//    T19S2 $AB00
+//    T19S1 $AC00
+//    T19S0 $AD00
+
+//    T1ASF $AE00
+//    T1ASE $AF00
+//    T1ASD $B000
+//    T1ASC $B100
+//    T1ASB $B200
+//    T1ASA $B300
+//    T1AS9 $B400
+//    T1AS8 $B500
+//    T1AS7 $B600
+//    T1AS6 $B700
+
+// Copy: [2000:200A] -> $A800 // @ BC7C
+//                             0  1  2  3  4  5  6  7  8  9  A
+//    Src T08S8 $2000 // 2000:04 10 10 04 60 04 60 00 00 00 07
+//    Dst T19S5 $A000 // A800:04 04 04 04 87 04 87 87 00 00 07
+// File": DINO.EGGS.T1B
+//    T1BSD $2000
+//    T1BSC $2100
+//    T1BSB $2200
+//    T1BSA $2300
+//    T1BS9 $2400
+//    T1BS8 $2500
+//    T1BS7 $2600
+//    T1BS6 $2700
+//    T1BS5 $2800
+//    T1BS4 $2900
+//    T1BS3 $2A00
+//    T1BS2 $2B00
+//    T1BS1 $2C00
+//    T1BS0 $2C00
+
+//    T1ASF $2D00
+//    T1ASE $2E00
+//    T1ASD $2F00
+//    T1ASC $3000
+//    T1ASB $3100
+//    T1ASA $3200
+//    T1AS9 $3300
+//    T1AS8 $3400
+//    T1AS7 $3500
+//    T1AS6 $3600
+//    T1AS5 $3700
+//    T1AS4 $3800
+//    T1AS3 $3900
+//    T1AS2 $3A00
+
+sym BOOT_0     = 0801 // Called by P6PROM; 84A: JMP ($8FD) -> $B100
+sym BOOT_1     = B100 // JMP $B700
+sym BOOT_2     = B700 // DOSLDR = B700: JSR $BF43_Copy2IOB10, JMP $BC56
+sym BOOT_3     = BC56 // .. JMP $A892
+sym MAIN       = A892
+sym MAIN_2     = B63E // before load: JSR SETKBD, SETVID, INIT, JMP $B100 but afer load JMP $B080
+
+// NOTE: This is only valid at boot stage 1
+// after boot stage 2 ($B700 is loaded from T$1A,S$5) this is code
+//x B7E8:B7F0
+// Copy DOS 3.3 IOB B7E8:B7F8 after Boot stage 1 @ $BF43 to our Custom IOB @ BA7A
+db _IOB_TYPE     B7E8  // [0]   01
+db _IOB_SLOT     B7E9  // [1]   60
+db _IOB_DRIVE    B7EA  // [2]   01
+db _IOB_VOL      B7EB  // [3]   FE
+db _IOB_TRK      B7EC  // [4]   00
+db _IOB_SEC      B7ED  // [5]   01
+da _IOB_DCT      B7EE  // [6] B7FB
+da _IOB_DST      B7F0  // [8] B700
+da _IOB_LEN      B7F2  // [A] 0000
+db _IOB_CMD      B7F4  // [C]   02
+db _IOB_STATUS   B7F5  // [D]   F8
+db _IOB_MOD      B7F6  // [E]   FE
+db _IOB_PSLOT    B7F7  // [F]   60
+db _IOB_PDRIVE   B7F8  //[10]   01
+dw _IOB_SPARE    B7F9  //[11] IBSPAR -- unused --
+
+db DCT_TYPE      B7FB  // [0]   00 Device Charactistic Table
+db DCT_PHASES    B7FC  // [1]   01 see IOB_DCT_PTR @ $BA80
+dw DCT_MOTOR     B7FD  // [2] D8EF These values never change
+db padB7FF       B7FF
+
+// Dino Eggs uses a custom Data Field Epilog
+//         DOS3.3A     DINO.EGGS
+// Prolog  D5 AA AD    D5 AA AD
+// Epilog  DE AA       9E E7
+sym PRENIB16   = B800
+sym PRENIB1    = B804
+sym PRENIB2    = B81E
+sym WRITE16    = B82A // DOS 3.3 same
+sym WSYNC      = B84A
+sym WDATA0     = B866
+sym WDATA1     = B869
+sym WDATA2     = B87E
+sym WEXIT      = B8B4
+sym WNIBL9     = B8B8
+sym WNIBL7     = B8B9
+sym WNIBL      = B8BB
+sym POSTNB16   = B8C2 // Decode Sector
+sym POST1      = B8C4
+sym POST2      = B8C6
+sym READ16     = B8DC
+sym RSYNC      = B8DE
+sym READ1      = B8E1
+sym RSYNC1     = B8E6
+sym READ2      = B8EB
+sym READ3      = B8F6
+sym RDATA1     = B901
+sym READ4      = B904
+sym RDATA2     = B913
+sym READ5      = B915
+sym READ6      = B925
+sym READ7      = B92F
+sym READ8      = B939
+sym RDERR      = B942
+sym RDADR16    = B944
+sym RDA1       = B94F
+sym RDASYN     = B948
+sym RDASN1     = B954
+sym RDA2       = B959
+sym RDA3       = B964
+sym RDAFLD     = B96F
+sym RDA4       = B971
+sym RDA5       = B979
+sym RDA6       = B98B // DOS 3.3 Epilog0: DE -> 9E
+//      DOS3.3A             DINO.EGGS
+// B994:EA       NOP        B994:18       CLC
+// B995:BD 8C C0 LDA Q6L,X  B995:60       RTS
+//                          B996:8C C0    DB $8C, $C0
+// B998:10 FB    BPL RDA7   B998:10 FB    BPL RDA7
+sym RDA7       = B995 // DOS 3.3 Epilog1: AA -> E7 (not used due to RTS at B995!) 
+da  _B996        B996 // Middle of LDA Q6L,X
+sym RDEXIT     = B99E
+
+sym SEEK          = B9A0
+sym SEEK2         = B9AD
+sym OUT           = B9C0
+sym MINTEST       = B9C7
+sym MAXTEST       = B9CB
+sym STEP          = B9CF
+sym STEP2         = B9D0
+sym SEEKEND       = B9EA
+sym SETPHASE      = B9EE
+sym SEEKRTS       = B9FC
+db  padB9FD         B9FD:B9FF  // DOS 3.3 wastes 3 bytes between SEEK $B9A0 and MSWAIT $BA00
+sym MSWAIT        = BA00
+db ONTABLE          BA11:BA1C
+db OFFTABLE         BA1D:BA28
+db NIBL             BA29:BA68
+db padBA69          BA69      // DOS 3.3A left over temp assembly garbage "33 @3CEC @ECEC" ...
+sym DISKIO        = BA6A      // DOS 3.3 @ B7B5
+sym DISKERR       = BA74      // DOS 3.3 @ B7BF
+db padBA77          BA77:BA79 // DOS 3.3A left over temp assembly garbage "33 @3CEC @ECEC" ...
+
+// BA7A DosParam @ $BC93 RetryRWTS, FTOC read to $0200
+// Name         Addr  Offset Val
+db IOB_TYPE     BA7A // [0]   01 // DOS 3.3 @ $B7E8
+db IOB_SLOT     BA7B // [1]   60 // DOS 3.3 @ $B7E9 ; Read @ $BD10
+db IOB_DRIVE    BA7C // [2]   01 // DOS 3.3 @ $B7EA ; Read @ $BD66
+db IOB_VOL      BA7D // [3]   00 // DOS 3.3 @ $B7EB Volume
+db IOB_TRK      BA7E // [4]   ?? // DOS 3.3 @ $B7EC Track  <- SaveX or $20C+2*iblock
+db IOB_SEC      BA7F // [5]   ?? // DOS 3.3 @ $B7ED Sector <-       or $20D+2*iblock
+da IOB_DCT_PTR  BA80 // [6] B7FB // DOS 3.3 @ $B7EE Device Characteristic Table Pointer ($B7FB)
+da IOB_DST      BA82 // [8] 0200 // DOS 3.3 @ $B7F0 
+da IOB_LEN      BA84 // [A] 0000 // DOS 3.3 @ $B7F2 --not used--
+db IOB_CMD      BA86 // [C]   01 // DOS 3.3 @ $B7F4 Written @BCA5, but not used
+db IOB_STATUS   BA87 // [D]   00 // DOS 3.3 @ $B7F5 --not used--
+db IOB_MOD      BA88 // [E]   FE // DOS 3.3 @ $B7F6 --not used--
+db IOB_PREVSLOT BA89 // [F]   60 // DOS 3.3 @ $B7F7 ; Compared @ $BD15
+db IOB_PREVDRV  BA8A //[10]   01 // DOS 3.3 @ $B7F8 ; Compared @ $BD68
+// IOB_IBS      BA8B //[11]  n/a // DOS 3.3 @ $BFF9 --removed--
+
+//           DOS3.3 DINO.EGGS
+// DosSaveA  AA5C   BA8B
+// DosSaveX  AA5A   BA8C
+// DosSaveY  AA5B   BA8D
+// See LoadFiel @BC8A
+db LoadTrk      BA8B
+db LoadSec      BA8C
+db LoadAddr     BA8D
+
+// Left over text???
+asc             BA8E:BA95 // Unused "*" CtrlH CtrlB "ED30" CtrlH
+
+//     x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 xA xB xC xD xE xF
+//  9x:-- -- -- -- -- -- 00 01 -- -- 02 03 -- 04 05 06
+//  Ax:-- -- -- -- -- -- 07 08 -- -- !! 09 0A 0B 0C 0D
+//  Bx:-- -- 0E 0F 10 11 12 13 -- 14 15 16 17 18 19 1A
+//  Cx:-- -- -- -- -- -- -- -- -- -- -- 1B -- 1C 1D 1E
+//  Dx:-- -- -- 1F -- @@ 20 21 -- 22 23 24 25 26 27 28
+//  Ex:-- -- -- -- -- 29 2A 2B -- 2C 2D 2E 2F 30 31 32
+//  Fx:-- -- 33 34 35 36 37 38 -- 39 3A 3B 3C 3D 3E 3F
+//
+//  !! AA is a valid disk nibble but reserved
+//  @@ D5 is a valid disk nibble but reserved
+db DiskNib  BA96:BAFF // DOS 3.3 @ BA96
+
+// Original $BB00 Nibble Check:  (In Copy ][ search for E7 F9)
+// 4am provided a fancy Ctrl-Reset Easter Egg using a text screen wipe instead of the memory wipe at the place of the nibble check $BB00
+//
+// Copy ][+ Nibble Editor navigation:
+//    (F)ind: D5 AA AD
+//    Position cursor after AD
+//    Press M 42 times
+//    Press K  7 times
+//    Will be on start of next sector Address Field: D5 AA 96
+// Or:  = 2F44
+//      +  157
+//      = 309B
+//
+// To trace:
+   zpa zDosSector // 2D
+   zpa zPromDst   // 26
+   BPX B100
+   BPX BB0B
+   BPX BB33
+   BPX BBD6
+   BPX BC61
+   BPX BCC6
+// BCC6:60 // patch: RTS
+// BCC6:B0 // original: BCS
+//
+// Callstack/Trace
+// * BC67: JSR $BC8A  LoadFile       T13,SF,Num=4
+// * BCC3: JSR $BA6A  DISKIO
+// * BA6C: JSR $BD00  RWTS
+//   BDC4: JSR $B944  RDADR16
+//   BDF2: BEQ $BE10  RTTRK
+//   BE35: JSR $B8DC  READ16
+// * BE38: JSR $BB00  NibbleCheck -- DOS3.3A:  BE35: 18  PLP
+//
+//  0.   @BB09 Read and discard data field epilog $DF  (i.e. D5 AA DF)
+//  1.   @BB0B RWTS reading sector $F? No, then bail -> $BB18 return to RWTS -> $BE3C
+//  2.   @BB1C Init NibbleLen = 0
+//  3.    @BB22 Count number of consequitive $FF nibbles, should be $200+ !
+//  4. a) @BB33 Have sentinel $9E?   @BB7C Index = 6
+//  4. b) @BB36 Have sentinel $CF?   @BB6D Index = 5
+//  4. c) @BB3C Else get Index from raw nibble table = $BB09 + nibble = [$BB09..$BC08]
+//            First valid nibble check value is $BBF0-$BB09 = $E7
+//        @BB47 Verify NibbleCheckBC09[ Index ]
+//        @BB54 Verify NibbleCheckBC11[ Index ]
+//        @BB61 Verify NibbleCheckBC19[ Index ]
+//        @BB66 More?  NibbleCheckBC21[ Index ]
+//              No : $BB86 CheckE7 Goto Step 6
+//              Yes: $BB95 CheckF9 Goto Step 7
+//  5.    @BB66 Verify $9E? No, Goto Step 8 
+//  5.    @BB86 Verify $E7
+//  6.    @BB95 Verify $F9
+//  7. Is our (NibbleLength % 256) != 0?
+//     a) Yes? @BB77 Have $9E?
+//     b) No, Fall through
+//  7. a)       No : $BBA6, check FF sync bytes
+//  7. b)       Yes: Fall into step 5. @BB86
+//  8. a) @BBA6 Verify $FF
+//  8. b) @BBAC Read sync bytes,  @BBBE 15x
+//  9.    @BBBA Verify $D5
+// 10.    @BBC7 Verify $AA
+// 11.    @BBCB Add $11 to NibbleLen
+// 12. a) @BBD6 Verify minimum NibbleLen for this track
+//     b) @BBE3 If (NibbleLen-MinLen) MOD 256 > 5 then error
+//
+//                       This is actually start of next sector Address Field!
+//                       Vv
+// READ16 = D5 AA 96 ... D5 AA  Data Field
+// Then do nibble check
+//
+// Notes:
+// * I don't believe [sync bytes] matter, but just in case ...
+// * Track 8, Sector 8 (unused) is loaded into $A800, **almost** mirrors T19S5 $A800
+// * Is T8S8 High Score???
+// * Track 8 is missing Sector $F entire Address Fields but has left over Data Address!
+//
+//   4-&-4  Physical  Logical  Addr of Sector 4&4
+//   AA AA         0        0  2851
+//   AA AB         1           29B1
+//   AB AA         2           2B23
+//   AB AB         3           2C8C
+//   AA AE         4           2DF5
+//   AA AF         5           2F5E
+//   AB AE         6           30C7
+//   AB AF         7           3230
+//   AE AA         8           3399
+//   AE AB         9           3502
+//   AF AA         A           366B
+//   AF AB         B           37D4
+//   AE AE         C           393D
+//   AE AF         D           3AA6
+//   AF AE         E           3C0F
+//   AF AF         F           n/a   Data @3D82: 96, entire sector is blank
+//    
+//      Sector F                @BB42            Read  Read   @BB77             Sector 0                Maximum
+//      DataEpilog              @BB4F            E7    F9     9E?               Addr Prolog!            NibbleCount+5
+//      @BB09  @BBB22    @BB3C  @BB5C     @BB66  @BB86 @BB9A  @BBA6  @BBAC      @BBBA @BBC7  @BBD6      @BFB8
+// Trk  Temp   $FFx214+  Index  Prolog3   SkipE7 E7                  ReadUntil  Epilog       ActualLen  ExpectLen
+//  00: DF     FF .. FF  F7 [7] FF CF E7  True   --    F9     [FF]   [FF x15]   D5    AA     $227       0227
+//  01: FF     FF .. FF  F9 [2] EE FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  02: FF     FF .. FF  CF [5] E7 F9 9E  False  E7    F9     [FF]   [FF x15]   D5    AA     $228       022B
+//  03: FF     FF .. FF  F3 [3] DC FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $226       0229
+//  04: DF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $228       022B
+//  05: DF     FF .. FF  9E [6] E7 F9 9E  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       0229
+//  06: CF     FF .. FF  FC [1] F7 FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  07: DF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $228       022B
+//  08: DF     FF .. FF  9E [6] E7 F9 9E  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  09: FF     FF .. FF  F7 [7] FF CF E7  True   --    F9     [FF]   [FF x15]   D5    AA     $226       0229
+//  0A: DF     FF .. FF  F9 [2] EE FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $226       0229
+//  0B: FF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  0C: DF     FF .. FF  F3 [3] DC FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  0D: DF     FF .. FF  9E [6] E7 F9 9E  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       0229
+//  0E: DF     FF .. FF  F7 [7] FF CF E7  True   --    F9     [FF]   [FF x15]   D5    AA     $228       022C
+//  0F: FF     FF .. FF  9E [6] E7 F9 9E  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  10: DF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  11: DF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $226       0229
+//  12: DF     FF .. FF  F3 [3] DC FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  13: DF     FF .. FF  FC [1] F7 FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022B
+//  14: DF     FF .. FF  F7 [7] FF CF E7  True   --    F9     [FF]   [FF x15]   D5    AA     $226       022A
+//  15: DF     FF .. FF  FE [0] F7 FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022B
+//  16: DF     FF .. FF  CF [5] E7 F9 9E  False  E7    F9     [FF]   [FF x15]   D5    AA     $226       0228
+//  17: DF     FF .. FF  9E [6] E7 F9 9E  False  E7    F9     [FF]   [FF x15]   D5    AA     $228       022A
+//  18: DF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  19: FF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  1A: DF     FF .. FF  9E [6] E7 F9 9E  False  E7    F9     [FF]   [FF x15]   D5    AA     $228       022A
+//  1B: DF     FF .. FF  FC [1] F7 FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $226       022A
+//  1C: DF     FF .. FF  FC [1] F7 FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $226       0229
+//  1D: DF     FF .. FF  F7 [7] FF CF E7  True   --    F9     [FF]   [FF x15]   D5    AA     $226       022A
+//  1E: FF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  1F: FF     FF .. FF  E7 [4] B9 FE CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  20: DF     FF .. FF  FE [0] F7 FF CF  False  E7    F9     [FF]   [FF x15]   D5    AA     $227       022B
+//  21: DF     FF .. FF  F7 [7] FF CF E7  True   --    F9     [FF]   [FF x15]   D5    AA     $228       022B
+//  22: D7     FF .. FF  F7 [7] FF CF E7  True   --    F9     [FF]   [FF x15]   D5    AA     $227       022A
+//  23: n/a
+//
+// Example:  Track 13
+//      DF                                                   (Data Epilog of Sector $F)
+//      FF FF .. FF FF                                       ($1F4D..$2170 = 548 bytes of $FF)
+//      FC                                                   Offset = 1
+//      F7                                                   [1] BC0A: F7
+//      FF                                                   [1] BC12: FF
+//      CF                                                   [1] BC1A: CF
+//                                                               BC22: 00
+//      E7 F9
+//      [FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF] (#16 sync $FF bytes)
+//      D5 AA                                                (Addr Prolog of Sector $1)
+// --- Original Nibble Check at DOS 3.3 NBUF1 $BB00 ---
+sym NibbleCheck = BB00 // Caled from @ BE38: JMP $BB00
+sym BadRead     = BB03 // JMP TRYADR2
+sym NibbleChk1  = BB06 // Equivalent DOS3.3A code from BE38-BE3A: PHP, BCC TRYADR2
+sym Nib2LockType= BB09 // LDA BB09+nibble,Y  ("NibLenE7")
+sym NoNibbleChk = BB18 // Not trying to read track $F
+sym InitNibLen  = BB1C // Initialize 16-bit running total disk nibbles; re-uses zPromDst $26, $27
+sym CountNibFF  = BB22
+sym IsNib9E     = BB33
+sym IsNibCF     = BB37
+sym GetNibLen   = BB3B // Don't have 9E or CF so get nibble check length
+sym NibKey1     = BB42 // Read Nibble Check Prolog
+sym NibKey2     = BB4F
+sym NibKey3     = BB5C
+sym SkipE7      = BB66
+sym NibbleChkCF = BB6D // read 5 nibbles
+sym NibbleChk9E = BB71 // read 6 nibbles
+sym NibChkError = BB75
+sym NibMid9E    = BB77
+sym NibMidE7    = BB86
+sym NibMidF9    = BB95
+sym NibCheckFF  = BBA6 // Have FF sync bytes?
+sym NibSync     = BBAC
+sym NibCheckD5  = BBBA // Have D5 epilog?
+sym NibSync16   = BBBE // And 16 sync bytes?
+sym NibCheckAA  = BBC2 // And AA epilog?
+sym NibChkPass  = BBCB // Add $11 bytes of Total Nibble Check bytes read ($215 -> $226 total)
+sym NibChkLen   = BBD6 // A = ($BFB8),Track;  LDY #04 ; IOB_OFFSET_TRK
+
+// Normally in DOS 3.3 the NBUF1 and NBUF2 are BB00:BC55
+//db  oldNBUF1    BB00:BBFF
+//db  oldNBUF2    BC00:BC55 // @BEBF LDA oldNBUFF2-1,Y; Left-over Nibble Check Data
+//                $BB09 + nibble = [$BB09..$BC08]
+//                First valid nibble check value is $BBF0-$BB09 = $E7
+// A value of -1 means this disk nibble should never appear @BB3C
+//           [E7] BBF0: 04
+//           [E8] BBF1: FF invalid disk nibble
+//           [E9] BBF2: FF error
+//           [EA] BBF3: FF error
+//           [EB] BBF4: FF error
+//           [EC] BBF5: FF error
+//           [ED] BBF6: FF error
+//           [EE] BBF7: FF error
+//           [EF] BBF8: FF error
+//           [F0] BBF9: FF invalid disk nibble
+//           [F1] BBFA: FF invalid disk nibble
+//           [F2] BBFB: FF error
+//           [F3] BBFC: 03
+//           [F4] BBFD: FF error
+//           [F5] BBFE: FF error
+//           [F6] BBFF: FF error
+//           [F7] BC00: 07
+//           [F8] BC01: FF invalid disk nibble
+//           [F9] BC02: 02
+//           [FA] BC03: FF error
+//           [FB] BC04: FF error
+//           [FC] BC05: 01
+//           [FD] BC06: FF error
+//           [FE] BC07: 00
+//           [FF] BC08: FF error
+db  aLockTypeE7   BBF0:BBC08   // @BB3C LDA $BB09,Y  LDA _NibLenE7-$E7,Y
+db  aNibPro1      BC09:BC10    // @BB47 CMP $BC09,Y Y=6 or 5 ($CF=5 nibs or $9E=6 nibs)
+db  aNibPro2      BC11:BC18    // @BB54 CMP $BC11,Y
+db  aNibPro3      BC19:BC20    // @BB61 CMP $BC19,Y
+db  aNibSkipE7    BC21:BC28    // @BB66 CMP $BC21,Y SkipE7?
+db  oldNBUF2b     BC29:BC55
+
+// Also see:
+//  TrkMinNib    BFB8:BFB8+22 // @BBDB LDA $BFB8,Y We must have this many nibbles
+
+// Nibble Check Values
+//  BB47  BB54  BB61  BB66  @BB47      @BB54      @BB61      @BB66 SkipE7
+//  [0]   [0]   [0]   [0]   BC09: F7   BC11: FF   BC19: CF   BC21: 00
+//  [1]   [1]   [1]   [1]   BC0A: F7   BC12: FF   BC1A: CF   BC22: 00
+//  [2]   [2]   [2]   [2]   BC0B: EE   BC13: FF   BC1B: CF   BC23: 00
+//  [3]   [3]   [3]   [3]   BC0C: DC   BC14: FF   BC1C: CF   BC24: 00
+//  [4]   [4]   [4]   [4]   BC0D: B9   BC15: FE   BC1D: CF   BC25: 00
+//  [5]   [5]   [5]   [5]   BC0E: E7   BC16: F9   BC1E: 9E   BC26: 00
+//  [6]   [6]   [6]   [6]   BC0F: E7   BC17: F9   BC1F: 9E   BC27: 00
+//  [7]   [7]   [7]   [7]   BC10: FF   BC18: CF   BC20: E7   BC28: 01
+
+// Just in case someone loaded "4am_ctrl_reset" symbols
+symuser ! OUR_RESET
+symuser ! FIXUP_PAGE
+symuser ! FIXUP_NEXT
+symuser ! RESET_BB2B
+symuser ! RESET_BB4F
+symuser ! RESET_BB58
+symuser ! RESET_BB5F
+symasm  ! T_BB8B
+symasm  ! T_BB97
+symasm  ! T_BBA9
+symasm  ! TXT_Y2ADDR
+
+//sym Stage2_BC56   = BC56      // @B703 JMP $B703
+sym InitReset     = BC58 // [BCFA:BCFC] -> [03F2:03F4] // Why isn't this in Boot Sector???
+
+// $BC8A..$BCFF is custom DOS3.3A Bload File from FTOC
+sym LoadFile      = BC8A // A=Trk, X=Sector, Y=Dst; save A,X,Y
+sym RetryRWTS     = BC93
+sym setIOBvol     = BC9B // [3] VOL
+sym setIOBcmd     = BCA1 // [C] CMD
+sym setIOBbuffLo  = BCA7 // [8] Buff Lo
+sym setIOBbuffHi  = BCAE // [9] Buff Hi
+sym setIOBtrk     = BCB2 // [4] Track   <- SaveA
+sym setIOBsec     = BCBA // [5] Sector  <- SaveX
+sym setIOBdst     = BCC8 // [9] Buff Hi <- SaveY
+// @BCE2
+//   LDY #7A   LDY #<BUFFER
+//   LDA #BA   LDA #>BUFFER
+sym ReadFTOC      = BCCF // NOTE: Start at *second* data sector $20E !!
+sym ReadFTOC1     = BCD1
+sym ReadFTOC2     = BCF9
+
+da _RESET           BCFA
+db _RESET_XOR       BCFC
+db _padBCFD         BCFD:BCFF  // Left-over code: A5 84 A4 ?? LDX $84, LDY $??
+
+sym RWTS     = BD00 // DOS 3.3 same
+
+sym STILLON  = BD25
+sym NOTSURE  = BD2A
+sym SAMESLOT = BD34
+sym ITISON   = BD4E
+sym PTRMOV   = BD54
+sym OK       = BD74
+sym TRYTRK   = BDAB
+sym SD1      = BD7C
+sym DRVSEL   = BD7F
+sym SEEKW    = BD87
+sym NOWAIT   = BD90
+sym TRYTRK   = BDAB
+
+sym TRYTRK2  = BDBC // DOS 3.3 same
+sym TRYADR   = BDC1 // dos 3.3 same
+sym TRYADR2  = BDC9 // DOS 3.3 same
+sym RECAL    = BDCE // DOS 3.3 same
+sym RESEEK   = BDE7 // DOS 3.3 same
+sym RDRIGHT  = BDED // DOS 3.3 same
+
+sym DRVERR     = BE04 // DOS 3.3 same
+sym JMPTO1     = BE07 // DOS 3.3 same
+sym GALLDONE   = BE0B // DOS 3.3 same
+sym FORMDSK    = BE0D // DOS 3.3 same
+sym RTTRK      = BE10 // DOS 3.3 same
+sym CORRECTVOL = BE26 // DOS 3.3 same
+
+// 4am's crack @ BE38-BE3B was a "sloppy" 4 byte patch instead of 3 bytes:
+//         DOS3.3A                     DINO.EGGS                       4AM
+//    BE38:18     php             BE38:4C 00 BB jmp NibbleCheck   BE38:EA  nop
+//    BE39:B0 8E  bcs TRYADD2                                     BE39:EA  nop
+//                                                                BE3A:EA  nop
+//    BE3B: 28    plp             BE3B:28                         BE3B:EA  nop
+//    BE3C:                       BE3C:
+//
+// Minimal 3 bytes patch
+//     BE38:08 EA EA
+// Of course READ16 needs to be patched from 9E E7 -> DE A5
+
+sym DoneNibChk = BE3C // JMP @ $BB19 after Nibble Check
+sym ALLDONE    = BE46 // DOS 3.3 same
+sym HNDLERR    = BE48 // DOS 3.3 same
+sym WRIT       = BE51 // DOS 3.3 same
+sym MYSEEK     = BE5A
+sym MYSEEK2    = BE6B
+sym WasDrive0  = BE7A
+sym IsDrive1   = BE88
+sym GOSEEK     = BE8B
+sym XtoY       = BE8E
+sym SETTRK     = BE95
+sym SETTRK2    = BEA2
+sym ONDRV1     = BEAB
+sym SETRTS     = BEAE
+sym DSKFORM    = BEAF
+sym CLRNBUF2   = BEBF
+sym CLRNBUF1   = BEC5
+sym FORMTRK    = BED4
+sym FINDS0     = BEE5
+sym FORMDONE   = BF09 // unused, WipeMem resides here now
+sym WTRACK16   = BF0D // unused, WipeMem resides here now
+
+// $BF00..$BF4E DINO custom code 
+// $BF4F..$BFB7 resumes in middle of DOS3.3A VTRACK
+// $BFB8..$BFFF DINO custom data unknown
+db             BEFF  // DOS3.3A instruction BCC crosses a page boundary but $BF00 is custom code
+sym WipeMem  = BF00
+sym WipeMem2 = BF02
+
+// Called @ $B07D
+sym SaveHighScore = BF12
+// BF1A: [3] IOB_OFFSET_VOL
+// BF20: [4] IOB_OFFSET_TRK
+// BF26: [5] IOB_OFFSET_SEC
+// BF2B: [8] IOB_OFFSET_BUF = $A800
+// BF36: [C] IOB_OFFSET_CMD = RWTS_CMD_WRITE = $2
+
+//        0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F 10
+// B7E8: 01 60 01 FE 00 01 FB B7 00 B7 00 00 02 F8 FE 60 
+sym Copy2IOB = BF43  // Copy default IOB [B7E8:B7F8] -> [BA7A:BA8A]:
+sym Copy2IOB2= BF45
+db             BF4F  // DOS3.3A instruction LDA $2D was partially overwritten by custom code!
+sym back2dos = B44F
+sym VTRACKresume = BF50
+
+sym VERR     = BF60
+sym VDATA    = BF67
+sym VSECT    = BF62
+sym VERR1    = BF6C
+sym S15LOC   = BF71
+sym WEXIT2   = BF87
+sym SECTOK   = BF88 // Never called.  This is still using the DOS 3.3A FOUND table!
+sym WEXIT1   = BFA6
+
+//  DOS3.3A FOUND     BFA8:BFB7 will be filled with $FF
+//          INTERLEAV BFB8:BFC7
+//  DINOEGG FOUND     --removed--
+//          INTERLEAV BFA8:BFB7
+db  INTERLEAVE BFA8:BFB7 // The INTERLEAV table has been moved from BFB8:BFC7 up BFA8:BFB7 to due to Nibble Check data
+
+// Minimum Nibble Count Per Track = BFB8:BFFF
+//            High    Low
+//    Track   Addr    Addr    Required Minimum Nibble Count
+//    [ 0]    BFDC:   BFB8:   02 27
+//    [ 1]    BFDD:   BFB9:   02 2A
+//    [ 2]    BFDE:   BFBA:   02 2B
+//    [ 3]    BFDF:   BFBB:   02 29
+//    [ 4]    BFE0:   BFBC:   02 2B
+//    [ 5]    BFE1:   BFBD:   02 29
+//    [ 6]    BFE2:   BFBE:   02 2A
+//    [ 7]    BFE3:   BFBF:   02 2B
+//    [ 8]    BFE4:   BFC0:   02 2A
+//    [ 9]    BFE5:   BFC1:   02 29
+//    [ A]    BFE6:   BFC2:   02 29
+//    [ B]    BFE7:   BFC3:   02 2A
+//    [ C]    BFE8:   BFC4:   02 2A
+//    [ D]    BFE9:   BFC5:   02 29
+//    [ E]    BFEA:   BFC6:   02 2C
+//    [ F]    BFEB:   BFC7:   02 2A
+//    [10]    BFEC:   BFC8:   02 2A
+//    [11]    BFED:   BFC9:   02 29
+//    [12]    BFEE:   BFCA:   02 2A
+//    [13]    BFEF:   BFCB:   02 2B
+//    [14]    BFF0:   BFCC:   02 2A
+//    [15]    BFF1:   BFCD:   02 2B
+//    [16]    BFF2:   BFCE:   02 28
+//    [17]    BFF3:   BFCF:   02 2A
+//    [18]    BFF4:   BFD0:   02 2A
+//    [19]    BFF5:   BFD1:   02 2A
+//    [1A]    BFF6:   BFD2:   02 2A
+//    [1B]    BFF7:   BFD3:   02 2A
+//    [1C]    BFF8:   BFD4:   02 29
+//    [1D]    BFF9:   BFD5:   02 2A
+//    [1E]    BFFA:   BFD6:   02 2A
+//    [1F]    BFFB:   BFD7:   02 2A
+//    [20]    BFFC:   BFD8:   02 2B
+//    [21]    BFFD:   BFD9:   02 2B
+//    [22]    BFFE:   BFDA:   02 2A
+//    [23]    BFFF:   BFDB:   20 29   Why does track $23 have a nibble count???
+// We must have this many nibbles to pass the nibble check
+db TrkMinNibLo BFB8:BFDB    // @BBDB LDA $BFB8,Y
+db TrkMinNibHi BFDC:BFFF    // @BBE7 LDA $BFDC,Y
+
+// --- ROM ---
+
+// IN X=Which Axis
+// OUT: Y=Value
+// Called at:
+//  A92A
+//  A980
+sym BUTTON0 = C061
+sym BUTTON1 = C062
+sym BUTTON2 = C063
+sym PREAD   = FB1E
+
+//sym ROM_HOME   = FC58
+//sym ROM_LIST   = FE5E
+// sym ROM_INPORT = FE8B
+// SYM ROM_BASIC  = FEB3
+sym ROM_INIT   = FB2F
+sym ROM_GET_PC = FF58 // RTS
+
+// --- Custom DOS to Normal DOS ---
+//
+// The disk can be read with Copy ][+ 4.4D Sector Editor, Patched DOS.
+// Read to $7100
+//
+// Version   Can Read
+// 4.3       Yes
+// 4.4B      Yes
+// 4.4D      Yes
+// 4.5       Yes
+// 5.0       No   $C0EC @E68E (also @EA06)
+// 5.1       No
+// 8.4       No   $C0EC @69EB
+//
+// 5.0 
+//   EC75: JSR $E67F  READ RDADR16 
+//    112:D5 AA 95
+//    115:CC SS TT VV
+//    119:Checksum
+//    11B:DE AB (actual)
+//    123:Ingore checksum?
+//    125:D5 AA AD
+//   After D5AA96 read @E6AA
+//   After CSTV   read @E6CC
+//    EC6F: JSR $E6EF  READ16
+// sym RDADR16 = E67F
+// sym READ16  = E6EF
+
+// 8.4 
+/      $BDB0 POSTNIB
+//     $BDE4
+//
+// Copy //e -- an open source clone of Copy ][+
+
+// ----- AppleWin Debugger BUG -----
+// db DCT_DRIVE     B7FB // Device Charactistic Table, see IOB_DCT_PTR @ $BA80
+// db DCT_PHASES    B7FC
+//                  BA80: FB B7
+// da IOB_DCT_PTR   BA80
+
+// BLOAD DINO.EGGS.0E,A$1F04 // Purple
+// BLOAD DINO.EGGS.1C,A$3F04 // Orange
+// BLOAD DINO.EGGS.1F,A$5F04 // Green, Night time, black mountains
+// BLOAD DINO.EGGS.22,A$7F04 // Blue
+
+wc *
+wa IOB_DST
+wa IOB_TRK  // Watch: TrkSec  BA7E, BA7F
+
+// Done reading FTOC
+// BPX BCF9
+
+// ---------- Minimal RWTS --------
+//P6ROM Decode62 $36C..$3D5: $00, $01, $00, $00, $02, $03, ... $3C, $3D, $3E, $3F
+// $40  Encode6&2 $BA29..$BAFF
+//      NIBL  $96, $97, $9A, $9B ... $FC, $FD, $FE, $FF
+// $6A  Decode6&2 $BA96..$BAFF
+//      DISKNIB $00, $01, $98, $99, $02, $03 ... $3C, $3D, $3E, $3F
+//$100  NBUF1  $BB00..$BBFF
+// $56  NBUF2  $BC00..$BC55
+// $03 SaveA, SaveX, SaveY
+// State
+//     RWTS_TRK
+//     RWTS_SEC
+//     RWTS_DST
+//     RWTS_SLOT
+echo "Done"
